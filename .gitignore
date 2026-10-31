@@ -1,0 +1,10 @@
+.env
+__pycache__/
+*.pyc
+
+check_ips.py
+deploy_parallel.py
+deploy_pipeline.py
+deploy_web_search.py
+teste_agente.py
+teste.py
