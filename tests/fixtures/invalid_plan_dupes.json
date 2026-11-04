@@ -1,0 +1,15 @@
+{
+  "request": "pesquise 5 carros mais rápidos",
+  "tasks": [
+    {
+      "cpu": 1,
+      "task": 1,
+      "prompt": "Use web_search para pesquisar os 5 carros mais rápidos. Traga em português."
+    },
+    {
+      "cpu": 1,
+      "task": 2,
+      "prompt": "Use web_search para pesquisar os 5 carros mais rápidos. Traga em português."
+    }
+  ]
+}

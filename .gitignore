@@ -1,10 +1,46 @@
+# Environment
 .env
+.env.local
+.env.*.local
+
+# Python
 __pycache__/
 *.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+.ruff_cache/
 
-check_ips.py
-deploy_parallel.py
-deploy_pipeline.py
-deploy_web_search.py
-teste_agente.py
-teste.py
+# Build
+dist/
+build/
+*.egg-info/
+.pip/
+
+# Colab / OpenClaw
+colab-sessions.json
+/tmp/fleet-*.json
+/tmp/run_*
+/tmp/gateway.log
+/root/.openclaw/
+/root/openclaw-plugins/
+
+# Logs
+*.log
+logs/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Jupyter
+.ipynb_checkpoints/

@@ -1,4 +1,12 @@
 import asyncio
+import os
+import sys
+from collections import defaultdict
+from pathlib import Path
+
+# Carrega .env antes de tudo
+from dotenv import load_dotenv
+load_dotenv()
 
 from textual.app import App, ComposeResult
 from textual.containers import Grid
@@ -6,8 +14,13 @@ from textual.widgets import Header, Footer, RichLog, Input
 from textual import work
 from textual.events import Click
 
-from colab_runner import executar_agente, planejar
-from plano import linhas_do_plano
+# Adiciona skill ao path para imports locais
+SKILL_ROOT = Path(__file__).parent / "skill" / "colab_agent_fleet"
+sys.path.insert(0, str(SKILL_ROOT / "scripts"))
+
+from init_fleet_plan import gerar_plano
+from run_fleet import rodar_maquina
+from validate_fleet_plan import etiquetas_esperadas
 
 
 class MaximizableLog(RichLog):
@@ -101,16 +114,29 @@ class ColabOrchestrator(App):
     async def orquestrar(self, pedido: str) -> None:
         log_cpu6 = self.query_one("#log-cpu6", MaximizableLog)
         try:
-            plano = await planejar(pedido, log_cpu6.write)
-            if plano is None:
-                log_cpu6.write("❌ Nenhuma máquina foi ligada.")
+            # Usa gerar_plano do skill com planner remoto no cpu6
+            modelo = os.getenv("MODELO_PLANEJADOR", "gpt-oss:20b")
+            flags_gpu = os.getenv("FLAGS_GPU", "--gpu t4")
+            plano_obj = await asyncio.to_thread(
+                gerar_plano, pedido, modelo, 2, "cpu6", log_cpu6.write, flags_gpu
+            )
+
+            if not plano_obj:
+                log_cpu6.write("❌ Falha ao gerar plano válido.")
+                return
+
+            tasks = plano_obj.get("tasks", [])
+            if not tasks:
+                log_cpu6.write("❌ Plano vazio.")
                 return
 
             log_cpu6.write("\n📋 Plano (confira antes de ligar):")
-            for cpu, n, prompt in linhas_do_plano(plano):
-                log_cpu6.write(f"   [cpu{cpu}] [tarefa{n}] {prompt[:110]}...")
+            for t in tasks:
+                log_cpu6.write(f"   [cpu{t['cpu']}] [tarefa{t['task']}] {t['prompt'][:110]}...")
+
+            maquinas_usadas = sorted(set(t['cpu'] for t in tasks))
             log_cpu6.write(
-                f"\n⏸ Vou ligar {len(plano)} máquina(s). Digite 'continuar' para iniciar, "
+                f"\n⏸ Vou ligar {len(maquinas_usadas)} máquina(s). Digite 'continuar' para iniciar, "
                 "ou outra coisa para cancelar."
             )
 
@@ -118,40 +144,38 @@ class ColabOrchestrator(App):
             self.aguardando_confirmacao = True
             await self.confirmacao.wait()
             if not self.continuar:
-                log_cpu6.write("🛑 Cancelado. Nenhuma máquina foi ligada além do cpu6.")
+                log_cpu6.write("🛑 Cancelado. Nenhuma máquina de execução foi ligada.")
                 return
 
-            itens_por_cpu = sorted(plano.items())
+            # Agrupa tasks por máquina
+            itens_por_cpu = defaultdict(list)
+            for t in tasks:
+                itens_por_cpu[t['cpu']].append(t)
+
             log_cpu6.write("\n📤 Enviando as tarefas...")
+            chave_nvidia = os.getenv("NVIDIA_API_KEY", "")
+            if not chave_nvidia:
+                log_cpu6.write("❌ NVIDIA_API_KEY não definida no ambiente.")
+                return
+
             resultados = await asyncio.gather(
-                *(self.rodar_maquina(cpu, itens) for cpu, itens in itens_por_cpu),
+                *(rodar_maquina(f"cpu{cpu}", itens, chave_nvidia, self.query_one(f"#log-cpu{cpu}", MaximizableLog).write) for cpu, itens in sorted(itens_por_cpu.items())),
                 return_exceptions=True,
             )
 
             confirmadas = 0
-            total = 0
-            for (cpu, itens), resultado in zip(itens_por_cpu, resultados):
-                total += len(itens)
+            total = len(tasks)
+            for (cpu, itens), resultado in zip(sorted(itens_por_cpu.items()), resultados):
                 if isinstance(resultado, Exception):
                     log_cpu6.write(f"❌ cpu{cpu} falhou: {resultado}")
                 else:
-                    confirmadas += resultado
+                    confirmadas += sum(1 for r in resultado if r.get("sucesso"))
             log_cpu6.write(f"\n🏁 Fim: {confirmadas}/{total} tarefas confirmadas.")
         except Exception as e:
             log_cpu6.write(f"❌ Erro: {e}")
         finally:
             self.aguardando_confirmacao = False
             self.missao_em_andamento = False
-
-    async def rodar_maquina(self, cpu: int, itens: list) -> int:
-        """Roda as tarefas de uma máquina uma depois da outra. Devolve quantas foram confirmadas."""
-        log_widget = self.query_one(f"#log-cpu{cpu}", MaximizableLog)
-        confirmadas = 0
-        for n, prompt in itens:
-            log_widget.write(f"\n▶ tarefa {n}")
-            if await executar_agente(f"cpu{cpu}", prompt, log_widget.write):
-                confirmadas += 1
-        return confirmadas
 
 
 if __name__ == "__main__":

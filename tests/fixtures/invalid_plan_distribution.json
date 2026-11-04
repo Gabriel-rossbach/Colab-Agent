@@ -1,0 +1,20 @@
+{
+  "request": "pesquise 3 coisas",
+  "tasks": [
+    {
+      "cpu": 1,
+      "task": 1,
+      "prompt": "Use web_search para pesquisar a. Traga em português."
+    },
+    {
+      "cpu": 2,
+      "task": 1,
+      "prompt": "Use web_search para pesquisar b. Traga em português."
+    },
+    {
+      "cpu": 3,
+      "task": 1,
+      "prompt": "Use web_search para pesquisar c. Traga em português."
+    }
+  ]
+}

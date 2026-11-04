@@ -1,0 +1,32 @@
+# OpenClaw agent config for Colab Agent Fleet execution lane
+# Used by: openclaw agent exec --config agents/openai.yaml ...
+
+model: "nvidia/nemotron-3.5-lightning-30b-a3b"
+provider: "nvidia"
+temperature: 0.2
+max_tokens: 4096
+
+# Tool configuration
+tools:
+  - name: "web_search"
+    description: "Search the web via DuckDuckGo and return structured results"
+    # Plugin provides this tool; no extra config needed
+
+# Execution settings
+execution:
+  mode: "local"          # embedded agent (fast, no gateway round-trip for tools)
+  lean: true             # --local-model-lean reduced tool surface
+  timeout_seconds: 1800  # 30 min per task
+
+# Provider auth (set via env at runtime)
+# NVIDIA_API_KEY injected via: echo $NVIDIA_API_KEY | openclaw models auth paste-api-key --provider nvidia
+
+# Logging
+log_level: "info"
+
+# Automation / Debug mode
+# When enabled: skips TUI, uses mock_prompt below, runs in terminal with full logs
+automation:
+  enabled: true
+  mock_prompt: "pesquise 5 plugins do OpenClaw e traga em português"
+  timeout_minutes: 120  # máximo 2 horas para debug
