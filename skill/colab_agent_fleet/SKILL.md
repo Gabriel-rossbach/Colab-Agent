@@ -1,6 +1,6 @@
 ---
 name: colab-agent-fleet
-description: Colab Agent Fleet is a public ClawHub skill for distributed web research across Colab CPU runtimes. Use it when the user says "colab fleet", "distributed research", "parallel web search", or wants coordinated multi-machine agents with a planning lane (GPU) and execution lane (CPU fleet).
+description: Colab Agent Fleet é uma skill pública do ClawHub para pesquisa web distribuída em runtimes CPU do Colab. Use quando o usuário falar "colab fleet", "pesquisa distribuída", "busca web paralela" ou quiser agentes multi-máquina coordenados com lane de planejamento (GPU) e lane de execução (fleet de CPU).
 version: 0.1.0
 homepage: https://github.com/seu-usuario/colab-agent-fleet
 user-invocable: true
@@ -9,74 +9,74 @@ metadata: {"openclaw":{"homepage":"https://github.com/seu-usuario/colab-agent-fl
 
 # Colab Agent Fleet
 
-Search intent: `colab fleet`, `distributed research`, `parallel web search`, `multi-machine agent orchestration`
+Intenção de busca: `colab fleet`, `pesquisa distribuída`, `busca web paralela`, `orquestração de agentes multi-máquina`
 
-## Goal
+## Objetivo
 
-Turn a research question into a coordinated multi-machine campaign:
+Transformar uma pergunta de pesquisa em uma campanha multi-máquina coordenada:
 
-- **Planning lane (GPU)**: Local LLM (Ollama/gpt-oss) freezes the plan, validates structure, distributes tasks
-- **Execution lane (CPU fleet)**: 5 Colab runtimes run OpenClaw agents with web_search tool in parallel
-- **Evidence capture**: Each task returns structured results (URLs, titles, snippets) with dedup and quality gates
-- **Human-in-the-loop**: Dashboard shows plan → user confirms → fleet launches → results aggregated
+- **Lane de planejamento (GPU)**: LLM local (Ollama/gpt-oss) congela o plano, valida a estrutura e distribui as tarefas
+- **Lane de execução (fleet de CPU)**: 5 runtimes Colab rodam agentes OpenClaw com a ferramenta web_search em paralelo
+- **Captura de evidências**: cada tarefa retorna resultados estruturados (URLs, títulos, snippets) com dedup e gates de qualidade
+- **Humano no loop**: o dashboard mostra o plano → o usuário confirma → a fleet dispara → resultados agregados
 
-This skill is the **orchestration layer**. Pair with your own search/analysis skills for domain-specific work.
+Esta skill é a **camada de orquestração**. Combine com suas próprias skills de busca/análise para trabalho específico de domínio.
 
-## Use This Skill When
+## Use esta skill quando
 
-- the user wants parallel web research across multiple IPs (Colab gives 5+ clean IPs)
-- the task needs a planner that outputs structured, validated task distributions
-- the workflow includes OpenClaw agents with web_search tool on Colab
-- you need a TUI dashboard to monitor fleet status and approve launches
-- the user wants reproducible research campaigns with promotion gates
+- o usuário quiser pesquisa web paralela em múltiplos IPs (o Colab dá 5+ IPs limpos)
+- a tarefa precisar de um planejador que gere distribuições de tarefas estruturadas e validadas
+- o workflow incluir agentes OpenClaw com a ferramenta web_search no Colab
+- você precisar de um dashboard TUI para monitorar o status da fleet e aprovar os disparos
+- o usuário quiser campanhas de pesquisa reproduzíveis com promotion gates
 
-If the primary goal is single-machine deep research, use a simpler agent loop instead.
+Se o objetivo principal for pesquisa profunda em máquina única, use um loop de agente mais simples.
 
-## Quick Start
+## Início rápido
 
-1. **Install the skill** (from ClawHub or local):
+1. **Instale a skill** (do ClawHub ou local):
    ```bash
    mkdir -p "$CODEX_HOME/skills"
    rsync -a skill/colab-agent-fleet/ "$CODEX_HOME/skills/colab-agent-fleet/"
    ```
 
-2. **Configure environment** (`.env` in project root):
+2. **Configure o ambiente** (`.env` na raiz do projeto):
    ```bash
-   NVIDIA_API_KEY=nvapi-xxx          # for Nemotron on execution lane
-   MAQUINAS=cpu1,cpu2,cpu3,cpu4,cpu5 # target Colab sessions
-   MODELO_PLANEJADOR=gpt-oss:20b     # Ollama model on cpu6 (GPU)
+   NVIDIA_API_KEY=nvapi-xxx          # para o Nemotron na lane de execução
+   MAQUINAS=cpu1,cpu2,cpu3,cpu4,cpu5 # sessões Colab alvo
+   MODELO_PLANEJADOR=gpt-oss:20b     # modelo Ollama no cpu6 (GPU)
    ```
 
-3. **Launch the dashboard** (human-in-the-loop):
+3. **Abra o dashboard** (humano no loop):
    ```bash
    python3 -m colab_agent_fleet.dashboard
-   # or run the orchestrator directly:
+   # ou rode o orquestrador diretamente:
    python3 -m colab_agent_fleet.orchestrator "pesquise 5 plugins de navegação para OpenClaw"
    ```
 
-4. **Or use the scripts directly** for CI/automation:
+4. **Ou use os scripts diretamente** para CI/automação:
    ```bash
-   # Generate a validated plan
+   # Gerar um plano validado
    python3 {baseDir}/scripts/init_fleet_plan.py \
      --out /tmp/fleet-plan.json \
      --request "pesquise 5 plugins de navegação para OpenClaw"
 
-   # Execute the plan (requires Colab CLI authenticated)
+   # Executar o plano (exige CLI do Colab autenticada)
    python3 {baseDir}/scripts/run_fleet.py \
      --plan /tmp/fleet-plan.json \
      --auto-confirm
    ```
 
-## Architecture
+## Arquitetura
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│  ORCHESTRATOR (local)                                       │
-│  - Receives natural language request                        │
-│  - Calls Planner (cpu6/GPU) → validated fleet plan          │
-│  - Shows plan in TUI → user confirms                        │
-│  - Launches fleet in parallel via colab ssh                 │
-│  - Aggregates results, applies promotion gates              │
+│  ORQUESTRADOR (local)                                       │
+│  - Recebe o pedido em linguagem natural                     │
+│  - Chama o Planejador (cpu6/GPU) → plano da fleet validado  │
+│  - Mostra o plano na TUI → usuário confirma                 │
+│  - Dispara a fleet em paralelo via colab ssh                 │
+│  - Agrega os resultados e aplica os promotion gates         │
 └─────────────────────────────────────────────────────────────┘
                             │
         ┌───────────────────┼───────────────────┐
@@ -95,84 +95,84 @@ If the primary goal is single-machine deep research, use a simpler agent loop in
                    └─────────────────┘
 ```
 
-## Operating Rules
+## Regras de operação
 
-### Planning Rules
+### Regras de planejamento
 
-- One request → one **fleet plan** (validated JSON)
-- Planner (GPU lane) outputs ONLY tasks in format: `[cpuN] [tarefaK] prompt`
-- Each machine max 2 tasks (tarefa1, tarefa2); machines used in order (cpu1, cpu2...)
-- Simple requests (2-4 tasks): 2 machines, split tasks. 5+ tasks: minimum machines, 2 per machine
-- No invented names, no extra angles (security, navigation, etc.) unless user asked
-- Plan must pass `validar_plano()` before any machine starts
+- Um pedido → um **plano da fleet** (JSON validado)
+- O planejador (lane GPU) gera SOMENTE tarefas no formato: `[cpuN] [tarefaK] prompt`
+- Cada máquina tem no máx. 2 tarefas (tarefa1, tarefa2); máquinas usadas em ordem (cpu1, cpu2...)
+- Pedidos simples (2–4 tarefas): 2 máquinas, dividindo as tarefas. 5+ tarefas: mínimo de máquinas, 2 por máquina
+- Sem nomes inventados, sem ângulos extras (segurança, navegação etc.) a menos que o usuário peça
+- O plano deve passar em `validar_plano()` antes de qualquer máquina iniciar
 
-### Execution Rules
+### Regras de execução
 
-- Each CPU machine runs identical setup: OpenClaw + NVIDIA NIMs + web_search plugin
-- Agents run via `openclaw agent exec` with `--local-model-lean` for speed
-- Gateway started with `--auth none --bind loopback` for local tool access
-- Results captured as JSONL; each task returns structured evidence
-- SQLite lock issues mitigated by spacing launches (pipeline: 60s stagger)
+- Cada máquina de CPU roda setup idêntico: OpenClaw + NVIDIA NIMs + plugin web_search
+- Agentes rodam via `openclaw agent exec` com `--local-model-lean` pela velocidade
+- Gateway inicia com `--auth none --bind loopback` para acesso local às ferramentas
+- Resultados capturados como JSONL; cada tarefa retorna evidência estruturada
+- Problemas de lock no SQLite são mitigados espaçando os disparos (pipeline: escalonamento de 60s)
 
-### Evidence & Promotion Rules
+### Regras de evidência e promoção
 
-- Every task must return: query, results[title, url, snippet], timestamp, machine
-- Dedup across fleet: URL + title similarity > 0.9 = duplicate
-- Promotion gates (configurable):
-  - `min_unique_sources`: minimum distinct domains (default 3)
-  - `max_dup_ratio`: max fraction of duplicates (default 0.15)
-  - `min_chars_per_result`: minimum content per result (default 200)
-- Results only promoted if gates pass; otherwise flagged for review
+- Cada tarefa deve retornar: query, results[title, url, snippet], timestamp, machine
+- Dedup na fleet: similaridade de URL + título > 0.9 = duplicata
+- Promotion gates (configuráveis):
+  - `min_unique_sources`: mínimo de domínios distintos (default 3)
+  - `max_dup_ratio`: fração máxima de duplicatas (default 0.15)
+  - `min_chars_per_result`: conteúdo mínimo por resultado (default 200)
+- Resultados só são promovidos se os gates passarem; senão, são marcados para revisão
 
-### Public Distribution Rules
+### Regras de distribuição pública
 
-- Use `{baseDir}` when pointing at bundled scripts/references
-- Keep secrets, tokens, private URLs, Colab session IDs out of skill bundle
-- Private specializations (custom prompts, internal targets) → local override skill
-- All scripts must pass `python3 -m py_compile` and `pytest -q`
+- Use `{baseDir}` ao apontar para scripts/references empacotados
+- Mantenha segredos, tokens, URLs privadas e IDs de sessão Colab fora do bundle da skill
+- Especializações privadas (prompts customizados, alvos internos) → skill de override local
+- Todos os scripts devem passar em `python3 -m py_compile` e `pytest -q`
 
-## References
+## Referências
 
-Read only the reference that matches the task:
+Leia somente a referência que corresponde à tarefa:
 
 - `references/fleet-architecture.md`
-  - Full architecture, lane separation, failure modes
+  - Arquitetura completa, separação de lanes, modos de falha
 - `references/plan-spec.md`
-  - Fleet plan JSON schema, validation rules, distribution algorithm
+  - Schema JSON do plano da fleet, regras de validação, algoritmo de distribuição
 - `references/colab-operations.md`
-  - Colab CLI patterns, session management, GPU/CPU shapes, SSH quirks
+  - Padrões da CLI Colab, gerenciamento de sessões, formas GPU/CPU, quirks de SSH
 - `references/openclaw-integration.md`
-  - OpenClaw plugin setup, gateway config, agent exec modes, tool registration
+  - Setup do plugin OpenClaw, config do gateway, modos de agent exec, registro de ferramentas
 - `references/promotion-gates.md`
-  - Evidence quality gates, dedup logic, promotion bundle format
+  - Gates de qualidade de evidência, lógica de dedup, formato do bundle de promoção
 - `references/dashboard-tui.md`
-  - Textual TUI patterns, log streaming, confirmation flows, maximizable logs
+  - Padrões da TUI Textual, streaming de logs, fluxos de confirmação, logs maximizáveis
 - `references/public-safety.md`
-  - Publication checklist for OpenClaw/ClawHub, leak prevention
+  - Checklist de publicação para OpenClaw/ClawHub, prevenção de vazamento
 
-## Bundled Scripts
+## Scripts empacotados
 
 - `scripts/init_fleet_plan.py`
-  - Generate a validated fleet plan JSON from natural language request
-  - Uses local Ollama (gpt-oss) or OpenAI-compatible endpoint for planning
-  - Outputs plan with tasks distributed per rules; exits non-zero if invalid
+  - Gera um JSON de plano da fleet validado a partir de um pedido em linguagem natural
+  - Usa Ollama local (gpt-oss) ou endpoint compatível com OpenAI para o planejamento
+  - Gera o plano com tarefas distribuídas conforme as regras; sai com código não-zero se inválido
 - `scripts/run_fleet.py`
-  - Execute a validated fleet plan across Colab machines
-  - Handles pipeline stagger, gateway health-check, result aggregation
-  - Applies promotion gates; writes results JSONL + markdown summary
+  - Executa um plano da fleet validado nas máquinas Colab
+  - Cuida do escalonamento do pipeline, health-check do gateway e agregação de resultados
+  - Aplica os promotion gates; grava resultados JSONL + resumo em markdown
 - `scripts/validate_fleet_plan.py`
-  - Standalone validator for fleet plan JSON (used in CI)
-  - Checks structure, distribution rules, prompt quality, no invented names
+  - Validador standalone do JSON do plano da fleet (usado em CI)
+  - Checa estrutura, regras de distribuição, qualidade dos prompts, ausência de nomes inventados
 - `scripts/render_fleet_summary.py`
-  - Render markdown summary from results JSONL with public redaction
-  - Shows per-machine stats, gate pass/fail, top sources
+  - Renderiza resumo em markdown a partir do JSONL de resultados com redação pública
+  - Mostra estatísticas por máquina, pass/fail dos gates, principais fontes
 - `scripts/capture_fleet_context.py`
-  - Capture git state, env (redacted), Colab session status, OpenClaw version
-  - Run before launch for reproducibility record
+  - Captura estado do git, env (redactado), status das sessões Colab, versão do OpenClaw
+  - Rode antes do disparo para registro de reprodutibilidade
 - `scripts/fleet_public_safety.py`
-  - Pure local helpers for path, URL, env, command redaction
-  - No network I/O; used by other scripts for safe public output
+  - Helpers locais puros para redação de caminhos, URLs, env e comandos
+  - Sem I/O de rede; usado por outros scripts para saída pública segura
 
-## Agents
+## Agentes
 
-- `agents/openai.yaml` — OpenClaw agent config for execution lane (Nemotron + web_search)
+- `agents/openai.yaml` — config do agente OpenClaw para a lane de execução (Nemotron + web_search)

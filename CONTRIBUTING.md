@@ -1,99 +1,99 @@
-# Contributing
+# Contribuindo
 
-## Development Setup
+## Configuração de desenvolvimento
 
 ```bash
-# Clone
+# Clonar
 git clone https://github.com/seu-usuario/colab-agent-fleet.git
 cd colab-agent-fleet
 
-# Install deps
+# Instalar dependências
 pip install -e ".[dev]"
-# or: pip install textual colab-cli duckduckgo-search python-dotenv pytest
+# ou: pip install textual colab-cli duckduckgo-search python-dotenv pytest
 
-# Install plugin (for local testing)
+# Instalar plugin (para testes locais)
 cd skill/colab-agent-fleet/scripts
-# Plugin builds in Colab; local build optional
+# O plugin é buildado no Colab; build local é opcional
 
-# Run tests
+# Rodar testes
 python3 -m pytest tests/ -q
 ```
 
-## Code Style
+## Estilo de código
 
 - Python 3.11+
-- Type hints on all public functions
-- `black` formatting (line length 100)
-- `ruff` linting
-- Docstrings for all public modules/classes/functions
+- Type hints em todas as funções públicas
+- Formatação com `black` (line length 100)
+- Lint com `ruff`
+- Docstrings em todos os módulos/classes/funções públicos
 
 ```bash
-# Format
+# Formatar
 black skill/ tests/
 ruff check --fix skill/ tests/
 ```
 
-## Commit Messages
+## Mensagens de commit
 
-Follow Conventional Commits:
+Siga o Conventional Commits:
 ```
-feat: add new promotion gate for content freshness
-fix: handle SQLite lock in pipeline stagger
-docs: update plan-spec.md with 10-task distribution
-refactor: extract gateway health-check to helper
-test: add unit tests for dedup logic
-chore: update dependencies
+feat: adiciona novo gate de promoção para frescor do conteúdo
+fix: trata lock do SQLite no pipeline escalonado
+docs: atualiza plan-spec.md com distribuição de 10 tarefas
+refactor: extrai health-check do gateway para helper
+test: adiciona testes unitários da lógica de dedup
+chore: atualiza dependências
 ```
 
-## Pull Request Process
+## Processo de Pull Request
 
-1. Fork & create branch: `git checkout -b feat/my-feature`
-2. Make changes with tests
-3. Run verification: `python3 -m py_compile skill/... && python3 -m pytest -q`
-4. Run safety scan: `python3 skill/colab-agent-fleet/scripts/fleet_public_safety.py --scan .`
-5. Push & open PR with description of changes
-6. CI must pass (syntax, tests, safety)
+1. Fork e crie a branch: `git checkout -b feat/minha-feature`
+2. Faça as alterações com testes
+3. Rode a verificação: `python3 -m py_compile skill/... && python3 -m pytest -q`
+4. Rode o scan de segurança: `python3 skill/colab-agent-fleet/scripts/fleet_public_safety.py --scan .`
+5. Push e abra o PR com a descrição das alterações
+6. O CI deve passar (sintaxe, testes, segurança)
 
-## Adding New Features
+## Adicionando novas funcionalidades
 
-### New Promotion Gate
-1. Edit `run_fleet.py`: add to `PROMOTION_GATES_DEFAULTS` + `aplicar_gates()`
-2. Document in `references/promotion-gates.md`
-3. Add test in `tests/test_gates.py`
+### Novo Promotion Gate
+1. Edite `run_fleet.py`: adicione em `PROMOTION_GATES_DEFAULTS` + `aplicar_gates()`
+2. Documente em `references/promotion-gates.md`
+3. Adicione teste em `tests/test_gates.py`
 
-### New Reference Doc
-1. Create `references/new-topic.md`
-2. Add to `SKILL.md` References section
-3. Link from relevant scripts
+### Novo doc de referência
+1. Crie `references/novo-topico.md`
+2. Adicione na seção References do `SKILL.md`
+3. Linke a partir dos scripts relevantes
 
-### New Script
-1. Create `scripts/new_script.py` with argparse + main()
-2. Add to `SKILL.md` Bundled Scripts
-3. Add unit test in `tests/`
-4. Update `pyproject.toml` entry_points if CLI
+### Novo script
+1. Crie `scripts/novo_script.py` com argparse + main()
+2. Adicione na seção Bundled Scripts do `SKILL.md`
+3. Adicione teste unitário em `tests/`
+4. Atualize entry_points do `pyproject.toml` se for CLI
 
-## Testing
+## Testes
 
 ```bash
-# All tests
+# Todos os testes
 pytest tests/ -q
 
-# With coverage
+# Com cobertura
 pytest tests/ --cov=skill/colab-agent-fleet/scripts --cov-report=term-missing
 
-# Skip integration
+# Pulando integração
 pytest tests/ -m "not integration" -q
 ```
 
-## Documentation
+## Documentação
 
-- Update `docs/codex/` for Codex agent guidance
-- Update `references/` for user-facing docs
-- Keep `SKILL.md` in sync with script capabilities
+- Atualize `docs/codex/` para orientação dos agentes Codex
+- Atualize `references/` para docs voltado ao usuário
+- Mantenha o `SKILL.md` em sincronia com as capacidades dos scripts
 
-## Releasing
+## Release
 
-1. Update version in `SKILL.md` and `pyproject.toml`
+1. Atualize a versão no `SKILL.md` e no `pyproject.toml`
 2. Tag: `git tag v0.1.1`
 3. Push: `git push origin v0.1.1`
-4. GitHub Actions builds and publishes to ClawHub (if configured)
+4. O GitHub Actions builda e publica no ClawHub (se configurado)

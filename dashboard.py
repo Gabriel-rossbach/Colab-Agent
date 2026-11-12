@@ -1,6 +1,7 @@
 import asyncio
 import os
 import sys
+import yaml
 from collections import defaultdict
 from pathlib import Path
 
@@ -21,6 +22,17 @@ sys.path.insert(0, str(SKILL_ROOT / "scripts"))
 from init_fleet_plan import gerar_plano
 from run_fleet import rodar_maquina
 from validate_fleet_plan import etiquetas_esperadas
+
+
+def load_browser_config() -> bool:
+    """Carrega config do browser do openai.yaml"""
+    config_path = SKILL_ROOT / "agents" / "openai.yaml"
+    try:
+        with open(config_path, 'r') as f:
+            config = yaml.safe_load(f)
+            return config.get("browser", {}).get("enabled", False)
+    except Exception:
+        return False
 
 
 class MaximizableLog(RichLog):
@@ -114,6 +126,10 @@ class ColabOrchestrator(App):
     async def orquestrar(self, pedido: str) -> None:
         log_cpu6 = self.query_one("#log-cpu6", MaximizableLog)
         try:
+            # Browser config
+            use_browser = load_browser_config()
+            log_cpu6.write(f"🌐 Browser tool: {'HABILITADO' if use_browser else 'DESABILITADO (apenas web_search)'}")
+            
             # Usa gerar_plano do skill com planner remoto no cpu6
             modelo = os.getenv("MODELO_PLANEJADOR", "gpt-oss:20b")
             flags_gpu = os.getenv("FLAGS_GPU", "--gpu t4")
@@ -158,10 +174,13 @@ class ColabOrchestrator(App):
                 log_cpu6.write("❌ NVIDIA_API_KEY não definida no ambiente.")
                 return
 
-            resultados = await asyncio.gather(
-                *(rodar_maquina(f"cpu{cpu}", itens, chave_nvidia, self.query_one(f"#log-cpu{cpu}", MaximizableLog).write) for cpu, itens in sorted(itens_por_cpu.items())),
+            # Dispara cpu1..cpuN em background. O cpu6 já mandou os prompts e fica livre.
+            fleet_future = asyncio.ensure_future(asyncio.gather(
+                *(rodar_maquina(f"cpu{cpu}", itens, chave_nvidia, self.query_one(f"#log-cpu{cpu}", MaximizableLog).write, use_browser) for cpu, itens in sorted(itens_por_cpu.items())),
                 return_exceptions=True,
-            )
+            ))
+
+            resultados = await fleet_future
 
             confirmadas = 0
             total = len(tasks)

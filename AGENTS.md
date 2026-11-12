@@ -1,45 +1,37 @@
 # AGENTS.md
 
-This repository packages the **colab-agent-fleet** OpenClaw skill. Use this file as the index for Codex agents.
+Este repositório empacota a skill **colab-agent-fleet** do OpenClaw. Use este arquivo como índice para agentes Codex.
 
-## Operating Rules
+## Regras de operação
 
-- Restate the user goal and name the verification step before editing files.
-- Keep diffs surgical. Do not refactor adjacent surfaces unless the task needs it.
-- Preserve the split between skill code (`skill/colab-agent-fleet/`), docs (`docs/codex/`), and root orchestration (`dashboard.py`, `stop_all.py`).
-- Treat public-surface review as part of the default loop. New docs, examples, manifests, and templates must clear leak, bleed, and evidence-discipline checks.
-- Do not publish absolute local paths, browser profile names, private notebook URLs, secrets, customer identifiers, or unsupported claim language.
-- Put durable repo knowledge in `docs/codex/`. Keep this file short.
+- Reformule o objetivo do usuário e nomeie a etapa de verificação antes de editar arquivos.
+- Mantenha os diffs cirúrgicos. Não refatore código vizinho a menos que a tarefa exija.
+- Preserve a separação entre código da skill (`skill/colab-agent-fleet/`), docs (`docs/codex/`) e orquestração na raiz (`dashboard.py`, `stop_all.py`).
+- Trate a revisão de superfície pública como parte do loop padrão. Novos docs, exemplos, manifestos e templates devem passar pelas verificações de vazamento (leak), transfência indevida (bleed) e disciplina de evidências.
+- Não publique caminhos locais absolutos, nomes de perfil de navegador, URLs privadas de notebooks, segredos, identificadores de clientes ou linguagem de alegação sem suporte.
+- Coloque conhecimento durável do repo em `docs/codex/`. Mantenha este arquivo curto.
 
-## Repo Map
+## Mapa do repo
 
-- **Skill**: `skill/colab-agent-fleet/` — OpenClaw skill (scripts, references, agents)
-- **Orchestrator**: `dashboard.py` (TUI), `stop_all.py` (cleanup), `plano.py` (legacy planner)
-- **Docs**: `docs/codex/` — Codex agent guidance (overview, architecture, workflow, evals, cleanup)
-- **Tests**: `tests/` — Unit + integration tests
+- **Skill**: `skill/colab-agent-fleet/` — skill OpenClaw (scripts, references, agents)
+- **Orquestrador**: `dashboard.py` (TUI), `stop_all.py` (limpeza), `plano.py` (planejador legado)
+- **Docs**: `docs/codex/` — orientação para agentes Codex (overview, architecture, workflow, evals, cleanup)
+- **Testes**: `tests/` — testes unitários + integração
 - **Config**: `pyproject.toml`, `.env.example`, `.gitignore`
 
-## Default Verification
+## Verificação padrão
 
-1. Run `python3 -m py_compile skill/colab-agent-fleet/scripts/*.py`
-2. Run `python3 -m pytest tests/ -q`
-3. Run `python3 skill/colab-agent-fleet/scripts/fleet_public_safety.py --scan .`
-4. If `codex_harness` available: `python3 -m codex_harness audit . --strict --min-score 90`
-5. Review changed public files for secrets, private paths, private URLs, customer data, evidence drift.
+1. Rode `python3 -m py_compile skill/colab-agent-fleet/scripts/*.py`
+2. Rode `python3 -m pytest tests/ -q`
+3. Rode `python3 skill/colab_agent_fleet/scripts/fleet_public_safety.py --scan .`
+4. Se `codex_harness` estiver disponível: `python3 -m codex_harness audit . --strict --min-score 90`
+5. Revise os arquivos públicos alterados atrás de segredos, caminhos privados, URLs privadas, dados de clientes e deriva de evidências.
 
-## Project-Scoped Custom Agents
+## Conhecimentos-chave para agentes
 
-- `.codex/agents/architect.toml` — Architecture decisions, trade-offs
-- `.codex/agents/implementer.toml` — Code implementation, bug fixes
-- `.codex/agents/reviewer.toml` — Code review, safety, test coverage
-- `.codex/agents/evolver.toml` — Prompt optimization, planner improvements
-- `.codex/agents/cleanup.toml` — Dead code removal, dependency updates
-
-## Key Skills for Agents
-
-When working on this repo, agents should be familiar with:
-- OpenClaw skill structure (`SKILL.md`, plugin SDK, agent configs)
-- Colab CLI patterns (`colab-operations.md`)
-- Fleet plan spec (`plan-spec.md`) — distribution algorithm, validation rules
-- Promotion gates (`promotion-gates.md`) — quality criteria, customization
-- Public safety (`public-safety.md`) — redaction, leak prevention
+Ao trabalhar neste repo, os agentes devem conhecer:
+- Estrutura de skill OpenClaw (`SKILL.md`, SDK de plugins, configs de agente)
+- Padrões da CLI Colab (`colab-operations.md`)
+- Especificação do plano da fleet (`plan-spec.md`) — algoritmo de distribuição, regras de validação
+- Promotion gates (`promotion-gates.md`) — critérios de qualidade, customização
+- Segurança pública (`public-safety.md`) — redação (redaction), prevenção de vazamento

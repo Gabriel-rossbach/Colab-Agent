@@ -18,9 +18,7 @@ load_dotenv()
 SKILL_ROOT = Path(__file__).parent / "skill" / "colab_agent_fleet"
 sys.path.insert(0, str(SKILL_ROOT / "scripts"))
 
-from init_fleet_plan import gerar_plano
 from run_fleet import rodar_maquina
-from validate_fleet_plan import etiquetas_esperadas
 
 
 def load_agent_config():
@@ -43,6 +41,10 @@ async def run_automation_mode(config: dict):
     timeout_minutes = auto.get("timeout_minutes", 25)
     timeout_seconds = timeout_minutes * 60
     
+    # Browser config
+    browser_cfg = config.get("browser", {})
+    use_browser = browser_cfg.get("enabled", False)
+    
     if not enabled:
         print("❌ Automation não habilitado no openai.yaml (automation.enabled: true)")
         return
@@ -51,23 +53,18 @@ async def run_automation_mode(config: dict):
     print("🤖 MODO AUTOMAÇÃO ATIVADO")
     print("=" * 70)
     print(f"📝 Prompt mockado: {mock_prompt}")
+    print(f"🌐 Browser tool: {'HABILITADO' if use_browser else 'DESABILITADO (apenas web_search)'}")
     print()
     
-    # Gera plano no cpu6 (planner)
-    print("🧠 Gerando plano no cpu6 (planner)...")
-    modelo = os.getenv("MODELO_PLANEJADOR", "gpt-oss:20b")
-    flags_gpu = os.getenv("FLAGS_GPU", "--gpu t4")
-    
-    def log_cpu6(msg: str):
-        print_log("cpu6", msg)
-    
-    plano_obj = await asyncio.to_thread(
-        gerar_plano, mock_prompt, modelo, 4, "cpu6", log_cpu6, flags_gpu
-    )
-    
-    if not plano_obj:
-        print("❌ Falha ao gerar plano válido.")
-        return
+    # Modo automação: manda o mock_prompt VERBATIM para o cpu1, sem planner.
+    # Motivo: o planner (gpt-oss) reescrevia o pedido e perdia detalhes entre máquinas
+    # (URL, email), fazendo o agente agir no site errado. Como a tarefa de automação é
+    # única, não há o que distribuir — vai direto pro executor.
+    print("⚡ Modo automação: mock_prompt verbatim -> cpu1 (planner pulado)")
+    plano_obj = {
+        "request": mock_prompt,
+        "tasks": [{"cpu": 1, "task": 1, "prompt": mock_prompt}],
+    }
     
     tasks = plano_obj.get("tasks", [])
     if not tasks:
@@ -86,19 +83,25 @@ async def run_automation_mode(config: dict):
     itens_por_cpu = defaultdict(list)
     for t in tasks:
         itens_por_cpu[t['cpu']].append(t)
-    
+
     chave_nvidia = os.getenv("NVIDIA_API_KEY", "")
     if not chave_nvidia:
         print("❌ NVIDIA_API_KEY não definida no ambiente.")
         return
-    
-    # Executa em paralelo com logs no terminal
-    resultados = await asyncio.gather(
-        *(rodar_maquina(f"cpu{cpu}", itens, chave_nvidia, 
-                        lambda m, c=cpu: print_log(f"cpu{c}", m)) 
+
+    # 1) Dispara as máquinas de execução (cpu1..cpuN) em background.
+    #    O cpu6 já terminou de mandar os prompts, então fica livre.
+    print(f"\n📤 Enviando prompts para {len(itens_por_cpu)} máquina(s) de execução...")
+    fleet_future = asyncio.ensure_future(asyncio.gather(
+        *(rodar_maquina(f"cpu{cpu}", itens, chave_nvidia,
+                        lambda m, c=cpu: print_log(f"cpu{c}", m),
+                        use_browser)
           for cpu, itens in sorted(itens_por_cpu.items())),
         return_exceptions=True,
-    )
+    ))
+
+    # 2) Aguarda o resultado das máquinas de execução
+    resultados = await fleet_future
     
     # Resumo final
     confirmadas = 0

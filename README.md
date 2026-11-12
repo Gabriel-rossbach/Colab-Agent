@@ -1,16 +1,16 @@
 # Colab Agent Fleet
 
-**Distributed web research fleet: GPU planner + CPU execution lane on Google Colab.**
+**Fleet distribuída de pesquisa web: planejador em GPU + lane de execução em CPU no Google Colab.**
 
-## Overview
+## Visão geral
 
-Colab Agent Fleet orchestrates a **two-lane architecture** for parallel web research:
+O Colab Agent Fleet orquestra uma **arquitetura de duas lanes** para pesquisa web em paralelo:
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │  PLANNER (cpu6, GPU)                                        │
-│  - Local Ollama (gpt-oss:20b)                               │
-│  - Freezes plan, validates structure, distributes tasks     │
+│  - Ollama local (gpt-oss:20b)                               │
+│  - Congela o plano, valida a estrutura, distribui tarefas   │
 └─────────────────────────────────────────────────────────────┘
                             │
         ┌───────────────────┼───────────────────┐
@@ -29,18 +29,18 @@ Colab Agent Fleet orchestrates a **two-lane architecture** for parallel web rese
                    └─────────────────┘
 ```
 
-## Features
+## Funcionalidades
 
-- **Planning lane** (GPU): Local LLM via Ollama — free, private, no API keys
-- **Execution lane** (CPU fleet): 5 Colab runtimes with OpenClaw + web_search plugin
-- **Human-in-the-loop**: TUI dashboard shows plan → user confirms → fleet launches
-- **Promotion gates**: Success ratio, unique sources, dedup, content depth
-- **Reproducible**: Fleet plan JSON, context capture, redacted outputs
-- **OpenClaw skill**: Installable via `openclaw skills install`
+- **Lane de planejamento** (GPU): LLM local via Ollama — grátis, privado, sem chaves de API
+- **Lane de execução** (fleet de CPU): 5 runtimes Colab com OpenClaw + plugin web_search
+- **Humano no loop**: o dashboard TUI mostra o plano → o usuário confirma → a fleet dispara
+- **Promotion gates**: taxa de sucesso, fontes únicas, deduplicação, profundidade do conteúdo
+- **Reprodutível**: plano da fleet em JSON, captura de contexto, saídas redactadas
+- **Skill OpenClaw**: instalável via `openclaw skills install`
 
-## Quick Start
+## Início rápido
 
-### 1. Install as OpenClaw Skill
+### 1. Instalar como Skill do OpenClaw
 
 ```bash
 mkdir -p "$CODEX_HOME/skills"
@@ -48,53 +48,53 @@ git clone https://github.com/seu-usuario/colab-agent-fleet.git
 rsync -a colab-agent-fleet/skill/colab-agent-fleet/ "$CODEX_HOME/skills/colab-agent-fleet/"
 ```
 
-### 2. Configure Environment
+### 2. Configurar o ambiente
 
 ```bash
 cp .env.example .env
-# Edit .env with your keys:
+# Edite o .env com suas chaves:
 # NVIDIA_API_KEY=nvapi-xxx
 # MODELO_PLANEJADOR=gpt-oss:20b
 # MAQUINAS=cpu1,cpu2,cpu3,cpu4,cpu5
 ```
 
-### 3. Create Colab Sessions
+### 3. Criar as sessões Colab
 
 ```bash
-# CPU fleet (5 sessions)
+# Fleet de CPU (5 sessões)
 for m in cpu1 cpu2 cpu3 cpu4 cpu5; do colab new -s $m; done
 
-# GPU planner (1 session)
+# Planejador em GPU (1 sessão)
 colab new -s cpu6 --gpu t4
 ```
 
-### 4. Run Research
+### 4. Rodar a pesquisa
 
-**Interactive (TUI Dashboard):**
+**Interativo (Dashboard TUI):**
 ```bash
 python3 -m colab_agent_fleet.dashboard
-# Enter request → review plan → type "continuar" → watch fleet run
+# Digite o pedido → revise o plano → digite "continuar" → acompanhe a fleet rodar
 ```
 
-**Headless (CI/Automation):**
+**Headless (CI/Automação):**
 ```bash
-# Generate plan
+# Gerar plano
 python3 -m colab_agent_fleet.scripts.init_fleet_plan.py \
   --out /tmp/plan.json \
   --request "pesquise 5 plugins de navegação para OpenClaw"
 
-# Validate plan
+# Validar plano
 python3 -m colab_agent_fleet.scripts.validate_fleet_plan.py \
   --plan /tmp/plan.json \
   --request "pesquise 5 plugins de navegação para OpenClaw"
 
-# Execute fleet
+# Executar a fleet
 python3 -m colab_agent_fleet.scripts.run_fleet.py \
   --plan /tmp/plan.json \
   --out /tmp/run \
   --auto-confirm
 
-# Render report
+# Renderizar relatório
 python3 -m colab_agent_fleet.scripts.render_fleet_summary.py \
   --results /tmp/run.jsonl \
   --gates /tmp/run_gates.json \
@@ -102,28 +102,28 @@ python3 -m colab_agent_fleet.scripts.render_fleet_summary.py \
   --out /tmp/report.md
 ```
 
-## Requirements
+## Requisitos
 
 - Python 3.11+
-- `colab` CLI authenticated (`pip install colab-cli && colab login`)
-- NVIDIA API key for Nemotron (get at https://integrate.api.nvidia.com)
-- Ollama with `gpt-oss:20b` on cpu6 (or change `MODELO_PLANEJADOR`)
+- CLI `colab` autenticada (`pip install colab-cli && colab login`)
+- Chave de API da NVIDIA para o Nemotron (obtenha em https://integrate.api.nvidia.com)
+- Ollama com `gpt-oss:20b` no cpu6 (ou altere `MODELO_PLANEJADOR`)
 
-## Project Structure
+## Estrutura do projeto
 
 ```
 .
-├── skill/colab-agent-fleet/          # OpenClaw skill
-│   ├── SKILL.md                      # Skill manifest
-│   ├── agents/openai.yaml            # Agent config (Nemotron + web_search)
-│   ├── scripts/                      # Executable scripts
-│   │   ├── init_fleet_plan.py        # NL → validated fleet plan
-│   │   ├── run_fleet.py              # Execute plan on Colab fleet
-│   │   ├── validate_fleet_plan.py    # Standalone validator
-│   │   ├── render_fleet_summary.py   # JSONL → markdown report
-│   │   ├── capture_fleet_context.py  # Reproducibility context
-│   │   └── fleet_public_safety.py    # Redaction helpers
-│   └── references/                   # Deep-dive docs
+├── skill/colab-agent-fleet/          # Skill OpenClaw
+│   ├── SKILL.md                      # Manifesto da skill
+│   ├── agents/openai.yaml            # Config do agente (Nemotron + web_search)
+│   ├── scripts/                      # Scripts executáveis
+│   │   ├── init_fleet_plan.py        # LN → plano da fleet validado
+│   │   ├── run_fleet.py              # Executa o plano na fleet Colab
+│   │   ├── validate_fleet_plan.py    # Validador standalone
+│   │   ├── render_fleet_summary.py   # JSONL → relatório markdown
+│   │   ├── capture_fleet_context.py  # Contexto de reprodutibilidade
+│   │   └── fleet_public_safety.py    # Helpers de redação (redaction)
+│   └── references/                   # Docs detalhados
 │       ├── fleet-architecture.md
 │       ├── plan-spec.md
 │       ├── colab-operations.md
@@ -131,30 +131,30 @@ python3 -m colab_agent_fleet.scripts.render_fleet_summary.py \
 │       ├── promotion-gates.md
 │       ├── dashboard-tui.md
 │       └── public-safety.md
-├── docs/codex/                       # Codex agent guidance
-├── tests/                            # Unit + integration tests
-├── dashboard.py                      # TUI orchestrator (root)
-├── stop_all.py                       # Cleanup all Colab sessions
-├── pyproject.toml                    # Package config
-└── .env.example                      # Environment template
+├── docs/codex/                       # Orientação para agentes Codex
+├── tests/                            # Testes unitários + integração
+├── dashboard.py                      # Orquestrador TUI (raiz)
+├── stop_all.py                       # Limpa todas as sessões Colab
+├── pyproject.toml                    # Config do pacote
+└── .env.example                      # Modelo de variáveis de ambiente
 ```
 
-## Documentation
+## Documentação
 
-| Doc | Description |
-|-----|-------------|
-| `skill/colab-agent-fleet/references/fleet-architecture.md` | Architecture, failure modes, data flow |
-| `skill/colab-agent-fleet/references/plan-spec.md` | Fleet plan JSON schema, distribution rules |
-| `skill/colab-agent-fleet/references/promotion-gates.md` | Gate logic, customization, CI |
-| `skill/colab-agent-fleet/references/public-safety.md` | Redaction, leak prevention |
-| `docs/codex/overview.md` | Codex quick start, key files |
-| `docs/codex/architecture.md` | Design decisions, trade-offs |
-| `docs/codex/workflow.md` | Standard workflow, commands, troubleshooting |
+| Doc | Descrição |
+|-----|-----------|
+| `skill/colab-agent-fleet/references/fleet-architecture.md` | Arquitetura, modos de falha, fluxo de dados |
+| `skill/colab-agent-fleet/references/plan-spec.md` | Schema JSON do plano da fleet, regras de distribuição |
+| `skill/colab-agent-fleet/references/promotion-gates.md` | Lógica dos gates, customização, CI |
+| `skill/colab-agent-fleet/references/public-safety.md` | Redefinição (redaction), prevenção de vazamento |
+| `docs/codex/overview.md` | Início rápido do Codex, arquivos-chave |
+| `docs/codex/architecture.md` | Decisões de design, trade-offs |
+| `docs/codex/workflow.md` | Workflow padrão, comandos, troubleshooting |
 
-## License
+## Licença
 
-Apache-2.0 — see `LICENSE` for details.
+Apache-2.0 — veja `LICENSE` para detalhes.
 
-## Security
+## Segurança
 
-See `SECURITY.md` for vulnerability reporting and security practices.
+Veja `SECURITY.md` para reporte de vulnerabilidades e práticas de segurança.

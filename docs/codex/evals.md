@@ -1,37 +1,37 @@
-# Evaluation & Testing
+# Avaliação e testes
 
-## Test Suite Structure
+## Estrutura da suite de testes
 
 ```
 tests/
-├── conftest.py              # pytest fixtures
-├── test_fleet_plan.py       # Plan validation logic
-├── test_gates.py            # Promotion gates logic
-├── test_public_safety.py    # Redaction helpers
-├── test_integration.py      # End-to-end (requires Colab)
+├── conftest.py              # fixtures do pytest
+├── test_fleet_plan.py       # lógica de validação do plano
+├── test_gates.py            # lógica dos promotion gates
+├── test_public_safety.py    # helpers de redação (redaction)
+├── test_integration.py      # end-to-end (exige Colab)
 └── fixtures/
     ├── valid_plan.json
     ├── invalid_plan_dupes.json
     └── invalid_plan_distribution.json
 ```
 
-## Running Tests
+## Rodando os testes
 
 ```bash
-# All tests
+# Todos os testes
 python3 -m pytest tests/ -q
 
-# Specific module
+# Módulo específico
 python3 -m pytest tests/test_fleet_plan.py -v
 
-# With coverage
+# Com cobertura
 python3 -m pytest tests/ --cov=skill/colab-agent-fleet/scripts --cov-report=term-missing
 
-# Skip integration (requires Colab)
+# Pulando integração (exige Colab)
 python3 -m pytest tests/ -m "not integration" -q
 ```
 
-## Unit Test Examples
+## Exemplos de testes unitários
 
 ### test_fleet_plan.py
 ```python
@@ -61,7 +61,7 @@ def test_invalid_dupes():
     assert any("repete exatamente" in e for e in erros)
 
 def test_distribution_3_tasks():
-    # 3 tasks → cpu1(1,2), cpu2(1)
+    # 3 tarefas → cpu1(1,2), cpu2(1)
     tasks = [
         {"cpu": 1, "task": 1, "prompt": "Use web_search para a."},
         {"cpu": 1, "task": 2, "prompt": "Use web_search para b."},
@@ -119,14 +119,14 @@ def test_sanitize_dict():
     assert safe["nested"]["token"] == "***REDACTED***"
 ```
 
-## Integration Tests (Manual)
+## Testes de integração (manuais)
 
 ```bash
-# Requires: Colab CLI authenticated, NVIDIA_API_KEY, active sessions
+# Exige: CLI do Colab autenticada, NVIDIA_API_KEY, sessões ativas
 export NVIDIA_API_KEY=nvapi-xxx
 colab new -s cpu1 && colab new -s cpu2  # etc.
 
-# Full flow
+# Fluxo completo
 python3 -m colab_agent_fleet.scripts.init_fleet_plan.py \
   --out /tmp/plan.json \
   --request "pesquise 3 frameworks de teste Python"
@@ -136,22 +136,22 @@ python3 -m colab_agent_fleet.scripts.run_fleet.py \
   --auto-confirm
 ```
 
-## Metrics to Track
+## Métricas rastreadas
 
-| Metric | Target | Measurement |
-|--------|--------|-------------|
-| Plan validation pass rate | 100% | `validar_plano_json` on generated plans |
-| Fleet success ratio | ≥ 70% | `gate_pass` in results |
-| Unique sources per run | ≥ 3 | Promotion gate metric |
-| Duplicate ratio | ≤ 15% | Promotion gate metric |
-| Launch time (5 machines) | < 10 min | Wall clock from confirm to done |
-| Planner latency | < 30s | Ollama response time |
+| Métrica | Alvo | Medição |
+|---------|------|---------|
+| Taxa de aprovação na validação do plano | 100% | `validar_plano_json` nos planos gerados |
+| Taxa de sucesso da fleet | ≥ 70% | `gate_pass` nos resultados |
+| Fontes únicas por run | ≥ 3 | Métrica do promotion gate |
+| Taxa de duplicatas | ≤ 15% | Métrica do promotion gate |
+| Tempo de lançamento (5 máquinas) | < 10 min | Tempo de parede da confirmação até o fim |
+| Latência do planejador | < 30s | Tempo de resposta do Ollama |
 
-## Regression Checklist (Before Release)
+## Checklist de regressão (antes do release)
 
 - [ ] `python3 -m py_compile skill/colab-agent-fleet/scripts/*.py`
-- [ ] `python3 -m pytest tests/ -q` (all pass)
-- [ ] `python3 skill/colab-agent-fleet/scripts/validate_fleet_plan.py --plan tests/fixtures/valid_plan.json --request "test"`
-- [ ] `python3 skill/colab-agent-fleet/scripts/fleet_public_safety.py --scan .` (no secrets)
-- [ ] Manual fleet run with 2+ machines succeeds
-- [ ] Dashboard TUI launches without error
+- [ ] `python3 -m pytest tests/ -q` (todos passam)
+- [ ] `python3 skill/colab-agent-fleet/scripts/validate_fleet_plan.py --plan tests/fixtures/valid_plan.json --request "teste"`
+- [ ] `python3 skill/colab-agent-fleet/scripts/fleet_public_safety.py --scan .` (sem segredos)
+- [ ] Run manual da fleet com 2+ máquinas réussida
+- [ ] Dashboard TUI abre sem erro

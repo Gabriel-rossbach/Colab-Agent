@@ -21,7 +21,198 @@ from pathlib import Path
 from typing import Any
 
 # ─── CONFIG ────────────────────────────────────────────────────────
-SCRIPT_AGENTE = r"""
+def build_script_agente(use_browser: bool) -> str:
+    """Gera o script do agente com ou sem browser tool. JSON gerado via json.dumps para ser válido."""
+    import json as _json
+
+    browser_install = r"""
+# Browser tool (Google Chrome)
+if [ "{use_browser_str}" = "true" ]; then
+    echo "[*] Instalando Google Chrome..."
+    wget -q https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb
+    apt-get update -qq && apt-get install -y -qq ./google-chrome-stable_current_amd64.deb > /dev/null 2>&1
+    echo "[*] Browser pronto."
+fi
+""".replace("{use_browser_str}", "true" if use_browser else "false")
+
+    # Build config as Python dict, then dump to JSON
+    config = {
+        "models": {
+            "providers": {
+                "nvidia": {
+                    "baseUrl": "https://integrate.api.nvidia.com/v1",
+                    "api": "openai-completions",
+                    "apiKey": "$NVIDIA_API_KEY"
+                }
+            }
+        },
+        "agents": {
+            "defaults": {
+                "model": "nvidia/nemotron-3.5-lightning-30b-a3b",
+                "timeoutSeconds": 1800
+            },
+            "entries": {
+                "main": {
+                    "tools": {
+                        "allow": ["group:web", "browser"]
+                    }
+                }
+            }
+        },
+        "gateway": {
+            "mode": "local",
+            "bind": "loopback",
+            "port": 3456,
+            "auth": {"mode": "token", "token": "opencrawl-fleet-token"}
+        },
+        "tools": {
+            "allow": ["group:web"],
+        },
+        "plugins": {
+            "enabled": True,
+            "allow": ["duckduckgo"],
+            "entries": {
+                "duckduckgo": {
+                    "enabled": True,
+                    "config": {
+                        "webSearch": {
+                            "region": "br-pt",
+                            "safeSearch": "moderate"
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    if use_browser:
+        config["tools"]["allow"] = ["*"]  # allow all tools including browser plugin tools
+        config["agents"]["entries"]["main"]["tools"]["allow"] = ["*"]
+        config["tools"]["web"] = {
+            "search": {
+                "enabled": True,
+                "provider": "duckduckgo",
+                "maxResults": 10,
+                "timeoutSeconds": 30,
+                "cacheTtlMinutes": 15
+            },
+            "fetch": {
+                "enabled": True,
+                "maxCharsCap": 30000
+            }
+        }
+        config["browser"] = {
+            "enabled": True,
+            "defaultProfile": "openclaw",
+            "headless": True,
+            "noSandbox": True,
+            "profiles": {
+                "openclaw": {
+                    "driver": "openclaw",
+                    "engine": "chromium",
+                    "cdpPort": 9222
+                }
+            }
+        }
+        # Add browser plugin to config
+        config["plugins"]["allow"].append("browser")
+        config["plugins"]["entries"]["browser"] = {
+            "enabled": True,
+            "config": {}
+        }
+    else:
+        config["tools"]["web"] = {
+            "search": {
+                "enabled": True,
+                "provider": "duckduckgo",
+                "maxResults": 10,
+                "timeoutSeconds": 30,
+                "cacheTtlMinutes": 15
+            }
+        }
+
+    config_json = _json.dumps(config, indent=2)
+
+    use_browser_str = "true" if use_browser else "false"
+
+    tool_rules = r"""
+FERRAMENTAS DISPONÍVEIS:
+1. web_search — pesquisa rápida, fatos públicos, múltiplas fontes (DuckDuckGo)
+2. browser — navegação real com Chromium (ID exato: "browser")
+
+USO DA FERRAMENTA BROWSER (fluxo obrigatório para interagir com páginas):
+1. {"action": "navigate", "url": "https://..."} — navega para a página
+2. {"action": "snapshot"} — tira um snapshot da página que retorna REFS (IDs) de cada elemento clicável (botões, inputs, links)
+3. {"action": "act", "kind": "type"/"click", "ref": "e12", "text": "..."} — usa os REFS do snapshot para digitar em campos e clicar em botões
+   - Para preencher um campo: snapshot → achar o ref do input → act kind=type ref=eXX text="valor"
+   - Para clicar num botão: snapshot → achar o ref do botão → act kind=click ref=eXX
+4. {"action": "screenshot"} — tira screenshot visual
+5. {"action": "text"} — extrai texto visível da página
+
+RECUPERAÇÃO DE ERROS DO BROWSER (MUITO IMPORTANTE):
+- Os REFS ficam INVÁLIDOS toda vez que a página muda (após navigate, act, screenshot ou re-render).
+  NUNCA reutilize um ref de snapshot antigo — sempre faça snapshot de novo antes do próximo act.
+- Se uma ação falhar com "Unknown ref ..." ou "timed out ... unknown outcome":
+  1. NÃO repita a mesma ação com o mesmo ref.
+  2. Faça {"action": "snapshot"} (ou {"action": "text"}) para ver o estado ATUAL da página.
+  3. Use os refs NOVOS do snapshot para continuar.
+- Se navigate der timeout: tente 1 vez de novo; se falhar de novo, faça snapshot para ver em que página o browser está.
+- Se a MESMA ação falhar 2 vezes seguidas, pare de tentar e descreva o que aconteceu no relatório final.
+
+EXEMPLO DE LOGIN:
+- navigate url=https://site.com/login
+- snapshot (pega refs: e5=campo email, e6=campo senha, e7=botão entrar)
+- act kind=type ref=e5 text="email@exemplo.com"
+- act kind=type ref=e6 text="senha123"
+- act kind=click ref=e7
+- navigate ou snapshot para ver a home após login
+
+REGRAS DE USO:
+- Use web_search SEMPRE que possível (mais rápido, leve, múltiplas fontes)
+- Use browser SÓ quando necessário: login, formulários, clicar, screenshot, sites com JS pesado
+- NÃO use browser para pesquisa simples de fatos públicos""" if use_browser else r"""
+REGRAS OBRIGATÓRIAS:
+1. Sua ÚNICA ferramenta é web_search. Não tente usar nenhuma outra.
+2. Ao chamar web_search, os argumentos DEVEM ser no formato exato: {"query": "texto da pesquisa", "count": 5}
+   - Parâmetro obrigatório: query (string) — NUNCA use outro nome como 'args', 'limit', 'q', 'search'
+   - Parâmetro opcional: count (número de 1 a 10) — NUNCA use 'limit'
+3. Chame web_search pelo menos 2 vezes com ângulos diferentes antes de responder.
+4. Baseie sua resposta EXCLUSIVAMENTE nos resultados retornados por web_search.
+5. Se web_search retornar erro de argumentos, corrija para {"query": "..."} e tente de novo."""
+
+    browser_gateway_start = r"""
+# Inicia gateway para browser tool (necessário para tool browser)
+echo "[*] Parando gateway anterior se houver..."
+pkill -9 -f "openclaw[- ]gateway" 2>/dev/null || true
+sleep 3
+echo "[*] Iniciando OpenClaw Gateway..."
+export OPENCLAW_GATEWAY_TOKEN="opencrawl-fleet-token"
+export OPENCLAW_CONFIG_PATH="/root/.openclaw/openclaw.json"
+openclaw gateway --port 3456 --token "$OPENCLAW_GATEWAY_TOKEN" > /tmp/gateway.log 2>&1 &
+GATEWAY_PID=$!
+# Aguarda gateway ficar TOTALMENTE pronto (post-ready = todos os sidecars e plugins prontos)
+# Num gateway novo leva ~60-75s até "post-ready.startup-maintenance" - se o agent rodar antes, o browser tool não aparece
+echo "[*] Aguardando gateway ficar totally pronto..."
+for i in $(seq 1 20); do
+    sleep 5
+    if strings /tmp/gateway.log 2>/dev/null | grep -q "post-ready.startup-maintenance"; then
+        echo "[*] Gateway totalmente pronto após $((i*5))s (post-ready)"
+        break
+    fi
+done
+# Verifica porta e plugins
+if ss -tln 2>/dev/null | grep -q ":3456 "; then
+    echo "[*] Gateway OK (porta 3456 ativa)."
+else
+    echo "[AVISO] Porta 3456 não está escutando!"
+    strings /tmp/gateway.log | tail -20
+fi
+# Verifica se browser plugin carregou
+echo "[*] Verificando plugins no gateway log..."
+strings /tmp/gateway.log | grep "http server listening" || echo "[AVISO] Linha de plugins não encontrada"
+""" if use_browser else ""
+
+    return rf"""
 set -euo pipefail
 echo "===== [$(hostname)] Iniciando tarefa ====="
 
@@ -39,82 +230,77 @@ echo "[*] Instalando plugin duckduckgo oficial..."
 openclaw plugins install @openclaw/duckduckgo-plugin --force --accept-capabilities || true
 openclaw plugins enable duckduckgo || true
 
+# 2b. Browser plugin (necessário para ferramenta browser)
+{browser_install}
+# Instalar plugin de browser se habilitado
+if [ "{use_browser_str}" = "true" ]; then
+    echo "[*] Instalando plugin browser oficial..."
+    openclaw plugins install @openclaw/browser-plugin --force --accept-capabilities || true
+    openclaw plugins enable browser || true
+fi
+
 # 3. Para gateway antes de configurar
-pkill -f "openclaw gateway" 2>/dev/null || true
+pkill -9 -f "openclaw[- ]gateway" 2>/dev/null || true
 sleep 2
 
 # 4. Config completa (API key via env var para não ser sobrescrita pelo paste-api-key)
 echo "[*] Escrevendo config..."
 mkdir -p /root/.openclaw
-export NVIDIA_API_KEY='{CHAVE_NVIDIA}'
+export NVIDIA_API_KEY='{{CHAVE_NVIDIA}}'
 cat > /root/.openclaw/openclaw.json << 'JSONEOF'
-{
-  "models": {
-    "providers": {
-      "nvidia": {
-        "baseUrl": "https://integrate.api.nvidia.com/v1",
-        "api": "openai-completions",
-        "apiKey": "$NVIDIA_API_KEY"
-      }
-    }
-  },
-  "agents": {
-    "defaults": {
-      "model": "nvidia/nemotron-3.5-lightning-30b-a3b",
-      "timeoutSeconds": 1800
-    }
-  },
-  "tools": {
-    "allow": ["group:web"],
-    "web": {
-      "search": {
-        "enabled": true,
-        "provider": "duckduckgo",
-        "maxResults": 10,
-        "timeoutSeconds": 30,
-        "cacheTtlMinutes": 15
-      }
-    }
-  },
-  "plugins": {
-    "enabled": true,
-    "allow": ["duckduckgo"],
-    "entries": {
-      "duckduckgo": {
-        "enabled": true,
-        "config": {
-          "webSearch": {
-            "region": "br-pt",
-            "safeSearch": "moderate"
-          }
-        }
-      }
-    }
-  }
-}
+{config_json}
 JSONEOF
 
 # Valida config
 echo "[*] Validando config..."
 openclaw config validate || true
 
-# 5. Executar agente (agent exec roda embedded, sem gateway — plugins carregam do config)
+# 5. Executar agente
 echo "[*] Disparando agente..."
 echo '__PROMPT_B64__' | base64 -d > /tmp/missao.txt
-# Instrução FORTE: só web_search + schema exato da chamada
-PROMPT_FINAL="REGRAS OBRIGATÓRIAS:\n1. Sua ÚNICA ferramenta é web_search. Não tente usar nenhuma outra.\n2. Ao chamar web_search, os argumentos DEVEM ser no formato exato: {\"query\": \"texto da pesquisa\", \"count\": 5}\n   - Parâmetro obrigatório: query (string) — NUNCA use outro nome como 'args', 'limit', 'q', 'search'\n   - Parâmetro opcional: count (número de 1 a 10) — NUNCA use 'limit'\n3. Chame web_search pelo menos 2 vezes com ângulos diferentes antes de responder.\n4. Baseie sua resposta EXCLUSIVAMENTE nos resultados retornados por web_search.\n5. Se web_search retornar erro de argumentos, corrija para {\"query\": \"...\"} e tente de novo.\n\nTAREFA:\n$(cat /tmp/missao.txt)"
+# Regras + tarefa vão para arquivo via heredoc com delimitador quoted ('PROMPTEOF'):
+# assim aspas, $ e crases no texto são 100% literais e o bash NÃO interpreta nada
+cat > /tmp/prompt_final.txt << 'PROMPTEOF'
+{tool_rules}
+
+TAREFA:
+PROMPTEOF
+cat /tmp/missao.txt >> /tmp/prompt_final.txt
+PROMPT_FINAL="$(cat /tmp/prompt_final.txt)"
+
 # --code-mode direct = tool surface normal (não Code Mode)
 # tools.allow=["group:web"] já está no openclaw.json
-openclaw agent exec "$PROMPT_FINAL" \
-    --model nvidia/nemotron-3.5-lightning-30b-a3b \
-    --code-mode direct \
-    --timeout 600
+{browser_gateway_start}
+if [ "{use_browser_str}" = "true" ]; then
+    # Browser tool requer gateway - roda agent via gateway
+    export OPENCLAW_GATEWAY_TOKEN="opencrawl-fleet-token"
+    export OPENCLAW_CONFIG_PATH="/root/.openclaw/openclaw.json"
+    # Verifica saúde do gateway antes de disparar agent
+    echo "[*] Health check do gateway..."
+    openclaw health 2>&1 | head -10 || true
+    openclaw agent --message "$PROMPT_FINAL" \
+        --model nvidia/nemotron-3.5-lightning-30b-a3b \
+        --timeout 1800 \
+        --verbose on
+else
+    # Sem browser: modo direto (embutido, mais rápido)
+    OPENCLAW_CONFIG_PATH="/root/.openclaw/openclaw.json" openclaw agent exec "$PROMPT_FINAL" \
+        --model nvidia/nemotron-3.5-lightning-30b-a3b \
+        --code-mode direct \
+        --timeout 1800
+fi
 RC=$?
 echo "AGENTE_EXIT=$RC"
 [ "$RC" -eq 0 ] && echo "MISSAO_OK"
 
+# Para gateway no final
+pkill -9 -f "openclaw[- ]gateway" 2>/dev/null || true
+
 exit $RC
 """
+
+SCRIPT_AGENTE_NO_BROWSER = build_script_agente(False)
+SCRIPT_AGENTE_WITH_BROWSER = build_script_agente(True)
 
 PROMOTION_GATES_DEFAULTS = {
     "min_unique_sources": 3,
@@ -123,9 +309,10 @@ PROMOTION_GATES_DEFAULTS = {
 }
 
 
-def gerar_comando_bash(prompt: str, chave_nvidia: str) -> str:
+def gerar_comando_bash(prompt: str, chave_nvidia: str, use_browser: bool = False) -> str:
     prompt_b64 = base64.b64encode(prompt.encode("utf-8")).decode("ascii")
-    return SCRIPT_AGENTE.replace("__PROMPT_B64__", prompt_b64).replace("{CHAVE_NVIDIA}", chave_nvidia)
+    script = SCRIPT_AGENTE_WITH_BROWSER if use_browser else SCRIPT_AGENTE_NO_BROWSER
+    return script.replace("__PROMPT_B64__", prompt_b64).replace("{CHAVE_NVIDIA}", chave_nvidia)
 
 
 async def garantir_maquina(maquina: str, callback_log, flags: str = "") -> None:
@@ -157,7 +344,7 @@ async def garantir_maquina(maquina: str, callback_log, flags: str = "") -> None:
     await asyncio.sleep(15)
 
 
-async def rodar_maquina(maquina: str, tarefas: list[dict], chave_nvidia: str, callback_log) -> list[dict]:
+async def rodar_maquina(maquina: str, tarefas: list[dict], chave_nvidia: str, callback_log, use_browser: bool = False) -> list[dict]:
     """Roda todas as tarefas de uma máquina sequencialmente. Retorna lista de resultados."""
     # Garante que a máquina existe
     await garantir_maquina(maquina, callback_log)
@@ -169,55 +356,66 @@ async def rodar_maquina(maquina: str, tarefas: list[dict], chave_nvidia: str, ca
         prompt = tarefa["prompt"]
         callback_log(f"  ▶ {maquina} tarefa{n}: {prompt[:80]}...")
 
-        script = gerar_comando_bash(prompt, chave_nvidia)
+        script = gerar_comando_bash(prompt, chave_nvidia, use_browser)
+        max_tentativas = 2  # retry automático (ex: browser timeout)
 
-        try:
-            proc = await asyncio.create_subprocess_shell(
-                f"colab ssh -s {maquina}",
-                stdin=asyncio.subprocess.PIPE,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.STDOUT,
-            )
-            proc.stdin.write(script.encode("utf-8"))
-            proc.stdin.close()
+        resultado = None
+        for tentativa in range(1, max_tentativas + 1):
+            if tentativa > 1:
+                callback_log(f"     🔁 Nova tentativa {tentativa}/{max_tentativas} da tarefa{n}...")
+            try:
+                proc = await asyncio.create_subprocess_shell(
+                    f"colab ssh -s {maquina}",
+                    stdin=asyncio.subprocess.PIPE,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.STDOUT,
+                )
+                proc.stdin.write(script.encode("utf-8"))
+                proc.stdin.close()
 
-            saida_lines = []
-            while True:
-                linha = await proc.stdout.readline()
-                if not linha:
+                saida_lines = []
+                while True:
+                    linha = await proc.stdout.readline()
+                    if not linha:
+                        break
+                    texto = linha.decode("utf-8", errors="replace").rstrip()
+                    saida_lines.append(texto)
+                    # Streaming: loga cada linha em tempo real no painel da máquina
+                    callback_log(f"     {texto}")
+
+                await proc.wait()
+                saida = "\n".join(saida_lines)
+
+                sucesso = "MISSAO_OK" in saida
+                callback_log(f"     {'✅' if sucesso else '❌'} {maquina} tarefa{n} {'ok' if sucesso else 'falhou'}")
+
+                # Extrai resultado (simplificado - em produção parsearia JSON do agente)
+                resultado = {
+                    "maquina": maquina,
+                    "task": n,
+                    "prompt": prompt,
+                    "sucesso": sucesso,
+                    "saida_bruta": saida[-2000:],  # últimos 2000 chars
+                    "timestamp": time.time(),
+                    "tentativas": tentativa,
+                }
+                if sucesso:
                     break
-                texto = linha.decode("utf-8", errors="replace").rstrip()
-                saida_lines.append(texto)
-                # Streaming: loga cada linha em tempo real no painel da máquina
-                callback_log(f"     {texto}")
 
-            await proc.wait()
-            saida = "\n".join(saida_lines)
+            except Exception as e:
+                callback_log(f"     ❌ {maquina} tarefa{n} erro: {e}")
+                resultado = {
+                    "maquina": maquina,
+                    "task": n,
+                    "prompt": prompt,
+                    "sucesso": False,
+                    "erro": str(e),
+                    "timestamp": time.time(),
+                    "tentativas": tentativa,
+                }
 
-            sucesso = "MISSAO_OK" in saida
-            callback_log(f"     {'✅' if sucesso else '❌'} {maquina} tarefa{n} {'ok' if sucesso else 'falhou'}")
-
-            # Extrai resultado (simplificado - em produção parsearia JSON do agente)
-            resultado = {
-                "maquina": maquina,
-                "task": n,
-                "prompt": prompt,
-                "sucesso": sucesso,
-                "saida_bruta": saida[-2000:],  # últimos 2000 chars
-                "timestamp": time.time(),
-            }
+        if resultado is not None:
             resultados.append(resultado)
-
-        except Exception as e:
-            callback_log(f"     ❌ {maquina} tarefa{n} erro: {e}")
-            resultados.append({
-                "maquina": maquina,
-                "task": n,
-                "prompt": prompt,
-                "sucesso": False,
-                "erro": str(e),
-                "timestamp": time.time(),
-            })
 
     return resultados
 

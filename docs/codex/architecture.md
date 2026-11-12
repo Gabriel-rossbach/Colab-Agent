@@ -1,43 +1,43 @@
-# Architecture Decisions
+# Decisões de arquitetura
 
-## 1. Two-Lane Separation (Planning vs Execution)
+## 1. Separação em duas lanes (planejamento vs execução)
 
-**Decision**: Separate GPU planner (local LLM) from CPU execution fleet (NVIDIA NIMs).
+**Decisão**: separar o planejador em GPU (LLM local) da fleet de execução em CPU (NVIDIA NIMs).
 
-**Rationale**:
-- Planning is latency-sensitive but low-throughput → local Ollama (free, private, no API keys)
-- Execution is throughput-sensitive, needs structured output + tools → NVIDIA NIMs (fast, reliable, web_search)
-- Cost: GPU only for seconds; CPUs for minutes
+**Justificativa**:
+- Planejamento é sensível à latência, mas de baixo volume → Ollama local (grátis, privado, sem chaves de API)
+- Execução é sensível a volume, precisa de saída estruturada + ferramentas → NVIDIA NIMs (rápidos, confiáveis, com web_search)
+- Custo: GPU só por segundos; CPUs por minutos
 
-**Alternatives Considered**:
-- Single lane with API planner (OpenAI/Anthropic) → rejected: API keys, cost, latency
-- All local (Ollama for everything) → rejected: Nemotron better for structured tool use
+**Alternativas consideradas**:
+- Lane única com planejador via API (OpenAI/Anthropic) → rejeitada: chaves de API, custo, latência
+- Tudo local (Ollama em tudo) → rejeitada: Nemotron é melhor para uso estruturado de ferramentas
 
-## 2. Colab as Infrastructure
+## 2. Colab como infraestrutura
 
-**Decision**: Use Google Colab free tier (CPU) + optional GPU for planner.
+**Decisão**: usar o nível gratuito do Google Colab (CPU) + GPU opcional para o planejador.
 
-**Rationale**:
-- 5+ clean public IPs (natural rate-limit distribution)
-- Free compute for research workloads
-- Ephemeral = no persistent state management
-- SSH access via `colab` CLI
+**Justificativa**:
+- 5+ IPs públicos limpos (distribuição natural de rate-limit)
+- Compute grátis para cargas de pesquisa
+- Efêmero = sem gerenciamento de estado persistente
+- Acesso SSH via CLI `colab`
 
 **Trade-offs**:
-- Session startup ~2-3 min cold
-- 12h max runtime (free tier)
-- SQLite lock issues on parallel gateway starts → mitigated by pipeline stagger
+- Startup da sessão ~2–3 min a frio
+- 12h máx de runtime (nível gratuito)
+- Problemas de lock no SQLite em starts paralelos de gateway → mitigado pelo pipeline escalonado
 
-## 3. OpenClaw Plugin for web_search
+## 3. Plugin OpenClaw para web_search
 
-**Decision**: Custom TypeScript plugin (`web-search`) using `duckduckgo-search`, not `@openclaw/duckduckgo-plugin`.
+**Decisão**: plugin TypeScript customizado (`web-search`) usando `duckduckgo-search`, e não `@openclaw/duckduckgo-plugin`.
 
-**Rationale**:
-- Official plugin may not exist / version mismatch
-- Full control over tool schema, execution, error handling
-- No registry dependency; installs from local path
+**Justificativa**:
+- O plugin oficial pode não existir / pode haver desencontro de versão
+- Controle total sobre o schema da ferramenta, execução e tratamento de erros
+- Sem dependência de registro; instala de caminho local
 
-**Plugin Interface**:
+**Interface do plugin**:
 ```typescript
 tool({
   name: "web_search",
@@ -46,68 +46,68 @@ tool({
 })
 ```
 
-## 4. Gateway Per Machine (Not Shared)
+## 4. Gateway por máquina (não compartilhado)
 
-**Decision**: Each CPU machine runs its own gateway (`--auth none --bind loopback`).
+**Decisão**: cada máquina de CPU roda seu próprio gateway (`--auth none --bind loopback`).
 
-**Rationale**:
-- Plugin tools require gateway
-- Shared gateway = single point of failure + auth complexity
-- Loopback bind = no external exposure
-- Dev mode = no persistent config needed
+**Justificativa**:
+- Ferramentas de plugin exigem gateway
+- Gateway compartilhado = ponto único de falha + complexidade de auth
+- Bind em loopback = sem exposição externa
+- Modo dev = sem config persistente necessária
 
-## 5. Fleet Plan as JSON (Not YAML/TOML)
+## 5. Plano da fleet em JSON (não YAML/TOML)
 
-**Decision**: Fleet plan = JSON with strict schema (`plan-spec.md`).
+**Decisão**: plano da fleet = JSON com schema estrito (`plan-spec.md`).
 
-**Rationale**:
-- Machine-readable for validation (`validate_fleet_plan.py`)
-- Easy to generate from LLM (JSON mode)
-- Schema versionable
-- CI-friendly
+**Justificativa**:
+- Legível por máquina para validação (`validate_fleet_plan.py`)
+- Fácil de gerar a partir de LLM (modo JSON)
+- Schema versionável
+- Amigável para CI
 
-## 6. Pipeline Stagger (60s Between Machines)
+## 6. Pipeline escalonado (60s entre máquinas)
 
-**Decision**: Launch machines sequentially with 60s delay, not fully parallel.
+**Decisão**: lançar as máquinas sequencialmente com 60s de intervalo, não totalmente em paralelo.
 
-**Rationale**:
-- SQLite "offline maintenance" errors when 5 gateways start simultaneously
-- 60s stagger = ~5 min total launch vs 2 min parallel, but 99% success vs 40%
-- Acceptable for research workloads (not real-time)
+**Justificativa**:
+- Erros de "offline maintenance" do SQLite quando 5 gateways iniciam simultaneamente
+- Escalonamento de 60s = ~5 min no total vs 2 min em paralelo, mas 99% de sucesso vs 40%
+- Aceitável para cargas de pesquisa (não é tempo real)
 
-## 7. Human-in-the-Loop Confirmation
+## 7. Confirmação com humano no loop
 
-**Decision**: Dashboard requires explicit "continuar" before fleet launch.
+**Decisão**: o dashboard exige um "continuar" explícito antes de disparar a fleet.
 
-**Rationale**:
-- Colab compute costs money (compute units)
-- Prevents accidental launches from bad plans
-- Allows plan review (promotion gates preview)
+**Justificativa**:
+- Compute do Colab custa dinheiro (unidades de computação)
+- Evita disparos acidentais a partir de planos ruins
+- Permite revisar o plano (prévia dos promotion gates)
 
-## 8. Embedded Lean Agent Exec
+## 8. Agent exec embutido (lean)
 
-**Decision**: Use `openclaw agent exec --local-model-lean` for speed.
+**Decisão**: usar `openclaw agent exec --local-model-lean` pela velocidade.
 
-**Rationale**:
-- No gateway round-trip for core reasoning
-- Gateway only needed for plugin tools (web_search)
-- 2-3x faster than full gateway mode
+**Justificativa**:
+- Sem ida e volta ao gateway para o raciocínio central
+- Gateway só é necessário para ferramentas de plugin (web_search)
+- 2–3x mais rápido que o modo gateway completo
 
-## 9. Base64 for Prompt Injection
+## 9. Base64 para injeção de prompt
 
-**Decision**: Pass prompts via `base64 -d` to avoid shell escaping hell.
+**Decisão**: passar os prompts via `base64 -d` para evitar o inferno de escaping de shell.
 
-**Rationale**:
-- Prompts contain quotes, $(), backticks, newlines
-- Base64 = zero escaping issues
-- Simple: `echo 'b64' | base64 -d > /tmp/missao.txt`
+**Justificativa**:
+- Prompts contêm aspas, $(), crases e quebras de linha
+- Base64 = zero problemas de escaping
+- Simples: `echo 'b64' | base64 -d > /tmp/missao.txt`
 
-## 10. Markdown Summary with Redaction
+## 10. Resumo em markdown com redação (redaction)
 
-**Decision**: Final output = markdown summary + JSONL raw + gates JSON, all redacted.
+**Decisão**: saída final = resumo em markdown + JSONL bruto + JSON dos gates, tudo redactado.
 
-**Rationale**:
-- Human-readable report
-- Machine-readable for downstream
-- Safe for public sharing (no secrets, private URLs)
-- `fleet_public_safety.py` ensures consistency
+**Justificativa**:
+- Relatório legível por humanos
+- Legível por máquina para processamento downstream
+- Seguro para compartilhar publicamente (sem segredos, sem URLs privadas)
+- `fleet_public_safety.py` garante consistência

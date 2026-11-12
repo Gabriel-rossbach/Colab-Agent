@@ -1,67 +1,67 @@
-# Colab Operations Reference
+# Referência de operações do Colab
 
-## Colab CLI Patterns
+## Padrões da CLI Colab
 
-### Session Management
+### Gerenciamento de sessões
 ```bash
-# List active sessions
+# Listar sessões ativas
 colab sessions
 
-# Create new CPU session
+# Criar nova sessão de CPU
 colab new -s cpu1
 
-# Create GPU session (T4, L4, etc.)
+# Criar sessão de GPU (T4, L4 etc.)
 colab new -s cpu6 --gpu t4
 
-# Stop session
+# Parar sessão
 colab stop -s cpu1
 
-# SSH into session (run command via stdin)
+# SSH na sessão (roda comando via stdin)
 colab ssh -s cpu1 << 'EOF'
-command1
-command2
+comando1
+comando2
 exit
 EOF
 
-# SSH with command as argument (limited - use stdin pipe for complex scripts)
-colab ssh -s cpu1 -- command arg1 arg2
+# SSH com comando como argumento (limitado — use pipe via stdin para scripts complexos)
+colab ssh -s cpu1 -- comando arg1 arg2
 ```
 
-### Common Issues
+### Problemas comuns
 
-| Issue | Cause | Fix |
-|-------|-------|-----|
-| `HTTP 429: another colab ssh is connected` | Concurrent SSH to same session | Serialize access; wait for previous to finish |
-| `session not found` | Session stopped or wrong name | `colab sessions` to verify; `colab new -s name` to recreate |
-| `GPU not available` | Quota exhausted or region limit | Try different GPU type (`--gpu l4`, `--gpu a100`) or wait |
-| Slow startup | Cold VM boot | First run ~2-3 min; subsequent ~30s |
+| Problema | Causa | Correção |
+|----------|-------|----------|
+| `HTTP 429: another colab ssh is connected` | SSH concorrente na mesma sessão | Serialize o acesso; aguarde o anterior terminar |
+| `session not found` | Sessão parada ou nome errado | `colab sessions` para verificar; `colab new -s nome` para recriar |
+| `GPU not available` | Cota esgotada ou limite de região | Tente outro tipo de GPU (`--gpu l4`, `--gpu a100`) ou aguarde |
+| Startup lento | Boot frio da VM | Primeira run ~2–3 min; as seguintes ~30s |
 
-### Session Lifecycle in Fleet
+### Ciclo de vida da sessão na fleet
 
 ```
-1. Orchestrator checks `colab sessions` → verifies cpu1-cpu5 exist
-2. If missing → `colab new -s cpuN` (15s wait for boot)
-3. Deploy script runs via `colab ssh -s cpuN` (stdin pipe)
-4. Script installs OpenClaw, plugin, configures NVIDIA, starts gateway
-5. Agent runs → returns results
-6. Orchestrator aggregates → human sees summary
-7. Optional: `colab stop -s cpuN` to save compute
+1. Orquestrador checa `colab sessions` → verifica se cpu1-cpu5 existem
+2. Se faltar → `colab new -s cpuN` (espera 15s de boot)
+3. Script de deploy roda via `colab ssh -s cpuN` (pipe via stdin)
+4. Script instala OpenClaw, plugin, configura NVIDIA, inicia o gateway
+5. Agente roda → retorna resultados
+6. Orquestrador agrega → humano vê o resumo
+7. Opcional: `colab stop -s cpuN` para economizar compute
 ```
 
-## GPU vs CPU Shapes
+## Formas GPU vs CPU
 
-| Shape | Accelerator | Use Case | Cost (compute units/hr) |
-|-------|-------------|----------|------------------------|
-| CPU | None | Web search, lightweight | ~1 |
-| T4 | 1× T4 16GB | Planner (Ollama), light inference | ~4 |
-| L4 | 1× L4 24GB | Heavy local inference | ~8 |
-| A100 | 1× A100 40/80GB | Training, large models | ~30+ |
+| Forma | Acelerador | Caso de uso | Custo (unidades de compute/h) |
+|-------|-----------|-------------|-------------------------------|
+| CPU | Nenhuma | Busca web, cargas leves | ~1 |
+| T4 | 1× T4 16GB | Planejador (Ollama), inferência leve | ~4 |
+| L4 | 1× L4 24GB | Inferência local pesada | ~8 |
+| A100 | 1× A100 40/80GB | Treino, modelos grandes | ~30+ |
 
-**Fleet default**: cpu1-cpu5 = CPU, cpu6 = T4 (planner only)
+**Padrão da fleet**: cpu1–cpu5 = CPU, cpu6 = T4 (só planejador)
 
-## SSH Quirks
+## Quirks de SSH
 
-### Stdin Pipe (Recommended for Scripts)
+### Pipe via stdin (recomendado para scripts)
 ```python
 proc = await asyncio.create_subprocess_shell(
     f"colab ssh -s {maquina}",
@@ -73,44 +73,44 @@ proc.stdin.write(script.encode())
 proc.stdin.close()
 ```
 
-### Command Argument (Limited)
+### Comando como argumento (limitado)
 ```bash
-# Only works for simple commands without pipes/redirections
+# Só funciona para comandos simples, sem pipes/redirecionamentos
 colab ssh -s cpu1 -- openclaw agent exec "prompt"
 ```
 
-### Exit Handling
-Always end script with `exit` to close SSH cleanly:
+### Tratamento de saída (exit)
+Sempre termine o script com `exit` para fechar o SSH de forma limpa:
 ```bash
-echo 'commands...'
+echo 'comandos...'
 exit
 ```
 
-## Environment Variables in Colab
+## Variáveis de ambiente no Colab
 
-Colab sessions inherit some env vars but not all. Best practice: **pass via stdin script**:
+As sessões Colab herdam algumas variáveis de ambiente, mas nem todas. Boa prática: **passar via script no stdin**:
 
 ```bash
-# In script sent via stdin:
+# No script enviado via stdin:
 export NVIDIA_API_KEY="nvapi-xxx"
 export MODELO_PLANEJADOR="gpt-oss:20b"
 ```
 
-Or use `openclaw config set` for persistent config:
+Ou use `openclaw config set` para config persistente:
 ```bash
 openclaw config set models.providers.nvidia.apiKey "$NVIDIA_API_KEY"
 ```
 
-## Disk & Persistence
+## Disco e persistência
 
-- `/content` = ephemeral (reset on session restart)
-- `/root` = persists across restarts (but not across `colab stop/start`)
-- Google Drive mount: `colab drivemount` → `/content/drive`
-- For fleet: use `/root` for plugin installs, `/tmp` for transient logs
+- `/content` = efêmero (reseta ao reiniciar a sessão)
+- `/root` = persiste entre reinícios (mas não entre `colab stop/start`)
+- Mount do Google Drive: `colab drivemount` → `/content/drive`
+- Para a fleet: use `/root` para instalações de plugins, `/tmp` para logs transitórios
 
-## Network
+## Rede
 
-- Each Colab session = **unique public IP** (Google Cloud egress)
-- 5 sessions = 5 different IPs = natural rate-limit distribution
-- No VPC peering between sessions
-- Outbound only; no inbound ports (use `colab ssh` for access)
+- Cada sessão Colab = **IP público único** (egress do Google Cloud)
+- 5 sessões = 5 IPs diferentes = distribuição natural de rate-limit
+- Sem VPC peering entre sessões
+- Somente saída; sem portas de entrada (use `colab ssh` para acesso)

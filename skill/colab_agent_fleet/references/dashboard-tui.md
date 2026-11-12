@@ -1,67 +1,67 @@
-# Dashboard TUI Reference
+# Referência da Dashboard TUI
 
-## Architecture
+## Arquitetura
 
-The TUI (`dashboard.py`) uses **Textual** for a terminal-based orchestration UI:
+A TUI (`dashboard.py`) usa **Textual** para uma UI de orquestração no terminal:
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│ Header (clock)                                                   │
+│ Header (relógio)                                                 │
 ├─────────────────────────────────────────────────────────────────┤
-│ Input: "Describe request... Enter to plan, 'continuar' to launch"│
+│ Input: "Descreva o pedido... Enter para plano, 'continuar' p/ launching"│
 ├──────────────┬──────────────┬──────────────┬────────────────────┤
-│   cpu1 log   │   cpu2 log   │   cpu3 log   │      cpu6 log      │
-│  (click to   │  (click to   │  (click to   │   (planner logs)   │
-│  maximize)   │  maximize)   │  maximize)   │                    │
+│   log cpu1   │   log cpu2   │   log cpu3   │      log cpu6      │
+│  (clique p/  │  (clique p/  │  (clique p/  │   (logs do planner)│
+│  maximizar) │  maximizar) │  maximizar) │                    │
 ├──────────────┼──────────────┼──────────────┼────────────────────┤
-│ Footer (keybinds)                                             │
+│ Footer (atalhos de teclado)                                      │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-## Key Components
+## Componentes-chave
 
-### MaximizableLog Widget
+### Widget MaximizableLog
 ```python
 class MaximizableLog(RichLog):
     def on_click(self, event: Click) -> None:
-        # Toggle maximized: clicked log spans 2 columns, others hidden
+        # Alterna maximizado: o log clicado ocupa 2 colunas, os outros ficam escondidos
 ```
 
-### State Machine
+### Máquina de estados
 ```python
-missao_em_andamento: bool = False      # Fleet running?
-aguardando_confirmacao: bool = False   # Waiting for 'continuar'?
-confirmacao: asyncio.Event             # Signal to proceed
+missao_em_andamento: bool = False      # Fleet rodando?
+aguardando_confirmacao: bool = False   # Esperando 'continuar'?
+confirmacao: asyncio.Event             # Sinal para prosseguir
 ```
 
-### Flow
+### Fluxo
 
-1. **Input submitted** → `orquestrar(pedido)` starts
-2. **Planner** (cpu6) → generates plan → logs to cpu6 panel
-3. **Plan displayed** → user sees task breakdown
-4. **Confirmation** → input waits for "continuar"/"sim"/"s"
-5. **Launch** → `asyncio.gather` runs `rodar_maquina` per CPU
-6. **Results** → each machine logs to its panel; cpu6 shows summary
-7. **Done** → state reset; ready for next request
+1. **Input enviado** → `orquestrar(pedido)` inicia
+2. **Planejador** (cpu6) → gera o plano → loga no painel do cpu6
+3. **Plano exibido** → usuário vê o detalhamento das tarefas
+4. **Confirmação** → input espera por "continuar"/"sim"/"s"
+5. **Disparo** → `asyncio.gather` roda `rodar_maquina` por CPU
+6. **Resultados** → cada máquina loga no seu painel; cpu6 mostra o resumo
+7. **Fim** → estado reseta; pronto para o próximo pedido
 
-## Keybinds
+## Atalhos de teclado
 
-| Key | Action |
-|-----|--------|
-| Click log | Maximize/restore that log panel |
-| Enter (input) | Submit request or confirmation |
-| Ctrl+C | Quit app |
+| Tecla | Ação |
+|-------|------|
+| Clique no log | Maximiza/restaura aquele painel de log |
+| Enter (no input) | Envia o pedido ou a confirmação |
+| Ctrl+C | Sai do app |
 
-## Extending the Dashboard
+## Estendendo o dashboard
 
-### Add New Machine Panel
+### Adicionar novo painel de máquina
 ```python
-# In compose():
-for i in range(1, 8):  # was 7, now 8
+# Em compose():
+for i in range(1, 8):  # era 7, agora 8
     yield MaximizableLog(id=f"log-cpu{i}")
 ```
 
-### Add Custom Widget
+### Adicionar widget customizado
 ```python
 from textual.widgets import Static
 
@@ -70,7 +70,7 @@ class FleetStatus(Static):
         self.update(f"{machine}: {status}")
 ```
 
-### Async Log Streaming
+### Streaming assíncrono de log
 ```python
 async def log_stream(self, machine: str, async_gen):
     log = self.query_one(f"#log-cpu{machine}", MaximizableLog)
@@ -78,7 +78,7 @@ async def log_stream(self, machine: str, async_gen):
         log.write(line)
 ```
 
-## Testing TUI (Headless)
+## Testando a TUI (headless)
 
 ```python
 # tests/test_dashboard.py
@@ -88,7 +88,7 @@ async def test_orquestrar():
     async with AppDriver(ColabOrchestrator()) as pilot:
         await pilot.press("pesquise 3 carros")
         await pilot.press("enter")
-        # Wait for plan
+        # Espera o plano
         await pilot.wait_for_animation()
         assert "Plano" in pilot.app.query_one("#log-cpu6").render()
 ```

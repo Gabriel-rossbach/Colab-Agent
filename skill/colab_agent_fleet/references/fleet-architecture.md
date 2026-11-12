@@ -1,17 +1,17 @@
-# Fleet Architecture Reference
+# Referência de arquitetura da fleet
 
-## Overview
+## Visão geral
 
-Colab Agent Fleet implements a **two-lane architecture** for distributed web research:
+O Colab Agent Fleet implementa uma **arquitetura de duas lanes** para pesquisa web distribuída:
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
-│                        ORCHESTRATOR (local)                         │
-│  - Receives natural language request                                │
-│  - Calls Planner (GPU lane) → validated fleet plan                  │
-│  - Human confirmation via TUI                                       │
-│  - Launches fleet in parallel via colab ssh                        │
-│  - Aggregates results, applies promotion gates                     │
+│                        ORQUESTRADOR (local)                         │
+│  - Recebe o pedido em linguagem natural                             │
+│  - Chama o Planejador (lane GPU) → plano da fleet validado          │
+│  - Confirmação humana via TUI                                       │
+│  - Dispara a fleet em paralelo via colab ssh                        │
+│  - Agrega os resultados e aplica os promotion gates                 │
 └─────────────────────────────────────────────────────────────────────┘
                                     │
                     ┌───────────────┼───────────────┐
@@ -30,41 +30,41 @@ Colab Agent Fleet implements a **two-lane architecture** for distributed web res
                           └──────────────────┘
 ```
 
-## Lane Separation
+## Separação de lanes
 
-| Lane | Machine | Model | Purpose |
-|------|---------|-------|---------|
-| **Planning** | cpu6 (GPU) | gpt-oss:20b (Ollama) | Freeze plan, validate structure, distribute tasks |
-| **Execution** | cpu1-5 (CPU) | Nemotron 3.5 (NVIDIA NIMs) | Run web_search, return structured evidence |
+| Lane | Máquina | Modelo | Finalidade |
+|------|---------|--------|------------|
+| **Planejamento** | cpu6 (GPU) | gpt-oss:20b (Ollama) | Congelar o plano, validar a estrutura, distribuir tarefas |
+| **Execução** | cpu1–5 (CPU) | Nemotron 3.5 (NVIDIA NIMs) | Rodar web_search, retornar evidências estruturadas |
 
-**Why separate?**
-- GPU lane runs local LLM (free, private, no API keys)
-- CPU fleet uses NVIDIA NIMs (fast, structured output, web_search tool)
-- Cost optimization: GPU only for planning (seconds), CPUs for parallel execution
+**Por que separar?**
+- A lane de GPU roda LLM local (grátis, privado, sem chaves de API)
+- A fleet de CPU usa NVIDIA NIMs (rápido, saída estruturada, ferramenta web_search)
+- Otimização de custo: GPU só para o planejamento (segundos), CPUs para a execução paralela
 
-## Failure Modes & Mitigations
+## Modos de falha e mitigações
 
-| Failure | Detection | Mitigation |
-|---------|-----------|------------|
-| SQLite lock (`offline maintenance`) | Logs show "state undergoing offline maintenance" | Pipeline stagger (60s between machine starts) |
-| Gateway not ready | Health-check curl fails | 30-retries × 2s polling before agent launch |
-| colab ssh 429 (session busy) | HTTP 429 on SSH connect | Sequential per-machine; retry with backoff |
-| Plugin not loaded | `web_search is disabled` | Explicit plugin install + gateway restart per machine |
-| Rate limit (DuckDuckGo) | Empty results / errors | 5 machines × different IPs = natural distribution |
+| Falha | Detecção | Mitigação |
+|-------|----------|-----------|
+| Lock do SQLite (`offline maintenance`) | Logs mostram "state undergoing offline maintenance" | Escalonamento do pipeline (60s entre os starts das máquinas) |
+| Gateway não está pronto | Health-check curl falha | 30 tentativas × 2s de polling antes de disparar o agente |
+| colab ssh 429 (sessão ocupada) | HTTP 429 na conexão SSH | Sequencial por máquina; retry com backoff |
+| Plugin não carregou | `web_search is disabled` | Instalação explícita do plugin + restart do gateway por máquina |
+| Rate limit (DuckDuckGo) | Resultados vazios / erros | 5 máquinas × IPs diferentes = distribuição natural |
 
-## Data Flow
+## Fluxo de dados
 
-1. **Request** → Natural language string
-2. **Plan** → Validated JSON: `{"request": "...", "tasks": [{"cpu": 1, "task": 1, "prompt": "..."}]}`
-3. **Launch** → Per-machine bash script via `colab ssh -s cpuN` (stdin pipe)
-4. **Execute** → Each machine: install OpenClaw → install plugin → start gateway → run agent
-5. **Collect** → JSONL lines per task: `{maquina, task, prompt, sucesso, saida_bruta, timestamp}`
-6. **Gate** → Apply promotion rules (success ratio, dedup, min sources)
-7. **Report** → Markdown summary + gates JSON + raw JSONL
+1. **Pedido** → string em linguagem natural
+2. **Plano** → JSON validado: `{"request": "...", "tasks": [{"cpu": 1, "task": 1, "prompt": "..."}]}`
+3. **Disparo** → script bash por máquina via `colab ssh -s cpuN` (pipe via stdin)
+4. **Execução** → cada máquina: instala OpenClaw → instala plugin → inicia gateway → roda o agente
+5. **Coleta** → linhas JSONL por tarefa: `{maquina, task, prompt, sucesso, saida_bruta, timestamp}`
+6. **Gate** → aplica as regras de promoção (taxa de sucesso, dedup, fontes mínimas)
+7. **Relatório** → resumo em markdown + JSON dos gates + JSONL bruto
 
-## Promotion Gates
+## Gates de promoção
 
-Default gates (configurable via `--gates` JSON):
+Gates padrão (configuráveis via JSON em `--gates`):
 
 ```json
 {
@@ -75,22 +75,22 @@ Default gates (configurable via `--gates` JSON):
 }
 ```
 
-Gate logic runs post-execution on aggregated results. Only tasks with `sucesso=true` count.
+A lógica dos gates roda pós-execução sobre os resultados agregados. Só contam as tarefas com `sucesso=true`.
 
-## Scaling Limits
+## Limites de escala
 
-| Resource | Limit | Reason |
-|----------|-------|--------|
-| Max machines | 5 (cpu1-cpu5) | Colab free tier typical limit |
-| Max tasks/machine | 2 (tarefa1, tarefa2) | SQLite contention, context window |
-| Max total tasks | 10 | 5 machines × 2 tasks |
-| Max plan chars/task | 40 min | Ensures actionable prompts |
-| Planner retries | 2 | Balances quality vs time |
+| Recurso | Limite | Motivo |
+|---------|--------|--------|
+| Máx. de máquinas | 5 (cpu1–cpu5) | Limite típico do nível gratuito do Colab |
+| Máx. de tarefas/máquina | 2 (tarefa1, tarefa2) | Contenção no SQLite, janela de contexto |
+| Máx. de tarefas no total | 10 | 5 máquinas × 2 tarefas |
+| Máx. de caracteres do plano/tarefa | 40 min | Garante prompts acionáveis |
+| Tentativas do planejador | 2 | Equilibra qualidade e tempo |
 
-## Security Boundaries
+## Fronteiras de segurança
 
-- **No API keys in skill bundle** → Injected via env at runtime
-- **No private URLs/paths** → Redacted by `fleet_public_safety.py`
-- **Colab session IDs** → Redacted in logs
-- **Gateway auth=none** → Only loopback bind; no external exposure
-- **Human confirmation required** → No auto-launch without approval
+- **Sem chaves de API no bundle da skill** → injetadas via env em tempo de execução
+- **Sem URLs/caminhos privados** → redactados por `fleet_public_safety.py`
+- **IDs de sessão Colab** → redactados nos logs
+- **Gateway auth=none** → somente bind em loopback; sem exposição externa
+- **Confirmação humana obrigatória** → sem disparo automático sem aprovação

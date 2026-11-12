@@ -1,6 +1,6 @@
-# Fleet Plan Specification
+# Especificação do plano da fleet
 
-## JSON Schema
+## Schema JSON
 
 ```json
 {
@@ -10,7 +10,7 @@
   "properties": {
     "request": {
       "type": "string",
-      "description": "Original natural language request"
+      "description": "Pedido original em linguagem natural"
     },
     "tasks": {
       "type": "array",
@@ -38,12 +38,12 @@
 }
 ```
 
-## Distribution Algorithm
+## Algoritmo de distribuição
 
-Given `N` tasks (1 ≤ N ≤ 10):
+Dado `N` tarefas (1 ≤ N ≤ 10):
 
-| N | Machines Used | Distribution (tasks per machine) |
-|---|---------------|----------------------------------|
+| N | Máquinas usadas | Distribuição (tarefas por máquina) |
+|---|-----------------|------------------------------------|
 | 1 | 1 | cpu1: [1] |
 | 2 | 2 | cpu1: [1], cpu2: [1] |
 | 3 | 2 | cpu1: [1,2], cpu2: [1] |
@@ -55,22 +55,22 @@ Given `N` tasks (1 ≤ N ≤ 10):
 | 9 | 5 | cpu1: [1,2], cpu2: [1,2], cpu3: [1,2], cpu4: [1,2], cpu5: [1] |
 | 10 | 5 | cpu1: [1,2], cpu2: [1,2], cpu3: [1,2], cpu4: [1,2], cpu5: [1,2] |
 
-**Rule**: Minimum machines, max 2 tasks per machine, machines used in order (cpu1, cpu2...).
+**Regra**: mínimo de máquinas, máx. 2 tarefas por máquina, máquinas usadas em ordem (cpu1, cpu2...).
 
-## Validation Rules
+## Regras de validação
 
-1. **Structure**: All tasks have cpu (1-5), task (1-2), prompt (≥40 chars)
-2. **Distribution**: Labels match exactly `etiquetas_esperadas(N)` for given N
-3. **Uniqueness**: No duplicate (cpu, task) pairs
-4. **Prompt quality**:
-   - Contains "web_search"
-   - No invented names (quoted strings not in original request)
-   - No extra angles (security, navigation, coffee, etc.) unless requested
-5. **Dedup**: No exact or near-duplicate prompts (ratio ≥ 0.985)
+1. **Estrutura**: todas as tarefas têm cpu (1–5), task (1–2), prompt (≥40 caracteres)
+2. **Distribuição**: os rótulos batem exatamente com `etiquetas_esperadas(N)` para o N dado
+3. **Unicidade**: sem pares (cpu, task) duplicados
+4. **Qualidade do prompt**:
+   - Contém "web_search"
+   - Sem nomes inventados (strings entre aspas que não estejam no pedido original)
+   - Sem ângulos extras (segurança, navegação, café etc.) a menos que pedido
+5. **Dedup**: sem prompts exatos ou quase duplicados (ratio ≥ 0.985)
 
-## Example Valid Plans
+## Exemplos de planos válidos
 
-### 2 tasks (simple)
+### 2 tarefas (simples)
 ```json
 {
   "request": "pesquise 5 carros mais rápidos e 5 motos mais rápidas",
@@ -81,7 +81,7 @@ Given `N` tasks (1 ≤ N ≤ 10):
 }
 ```
 
-### 5 tasks (complex)
+### 5 tarefas (complexo)
 ```json
 {
   "request": "quero 5 plugins e 5 skills de navegação para o OpenClaw",
@@ -95,15 +95,15 @@ Given `N` tasks (1 ≤ N ≤ 10):
 }
 ```
 
-## Invalid Patterns (Auto-Rejected)
+## Padrões inválidos (rejeitados automaticamente)
 
-| Pattern | Rejection Reason |
-|---------|------------------|
-| `cpu1 tarefa3` | task > 2 (numeração recomeça por máquina) |
+| Padrão | Motivo da rejeição |
+|--------|--------------------|
+| `cpu1 tarefa3` | task > 2 (a numeração recomeça por máquina) |
 | `cpu6 tarefa1` | cpu > 5 |
-| 3 tasks on cpu1 | max 2 por máquina |
-| cpu1, cpu3 (skip cpu2) | máquinas em ordem, sem pular |
-| `"WebNav"` in prompt but not in request | nome inventado |
-| "segurança" in prompt but not in request | ângulo extra não pedido |
-| Two tasks with same prompt | duplicata exata |
-| Two tasks 98% similar | quase duplicata |
+| 3 tarefas na cpu1 | máx. 2 por máquina |
+| cpu1, cpu3 (pular cpu2) | máquinas em ordem, sem pular |
+| `"WebNav"` no prompt mas não no pedido | nome inventado |
+| "segurança" no prompt mas não no pedido | ângulo extra não pedido |
+| Duas tarefas com o mesmo prompt | duplicata exata |
+| Duas tarefas 98% similares | quase duplicata |

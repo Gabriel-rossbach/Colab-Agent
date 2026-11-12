@@ -91,8 +91,10 @@ def validar_plano_json(plan: dict[str, Any], request: str = "") -> tuple[bool, l
             continue
         if len(prompt) < MIN_CARACTERES:
             erros.append(f"{_rotulo(cpu, task_num)}: prompt curto demais ({len(prompt)} < {MIN_CARACTERES})")
-        if "web_search" not in prompt.lower():
-            erros.append(f"{_rotulo(cpu, task_num)}: o prompt não manda usar web_search")
+        # Tarefas de browser usam browser tool, não web_search
+        is_browser = any(kw in prompt.lower() for kw in ("browser", "navegador", "chromium", "playwright", "screenshot", "login", "formulário", "clicar", "clique"))
+        if "web_search" not in prompt.lower() and not is_browser:
+            erros.append(f"{_rotulo(cpu, task_num)}: o prompt não manda usar web_search nem browser")
         # Also check for "Web_search" or "WEB_SEARCH" variants
         # (already covered by .lower())
 

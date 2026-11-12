@@ -123,6 +123,32 @@ REGRAS OBRIGATÓRIAS:
 
 Isso foi o que fez funcionar de verdade — antes o modelo chamava a ferramenta com o nome errado do parâmetro e caía no conhecimento interno.
 
+### 4b. Ferramenta browser (opcional)
+
+Quando `browser.enabled: true` em `agents/openai.yaml`, o executor também instala:
+
+- **Google Chrome** (pacote `.deb` oficial)
+- **Plugin browser** (`@openclaw/browser-plugin`, já vem junto com o OpenClaw)
+- **Gateway do OpenClaw** na porta 3456 (o browser tool só funciona via gateway, não no modo `agent exec`)
+
+A config escrita em `~/.openclaw/openclaw.json` precisa ter:
+
+```json
+{
+  "gateway": { "port": 3456, "bind": "loopback", "auth": { "mode": "token", "token": "..." } },
+  "tools": { "allow": ["group:web", "browser"] },
+  "agents": { "entries": { "main": { "tools": { "allow": ["group:web", "browser"] } } } },
+  "plugins": { "allow": ["duckduckgo", "browser"], "entries": { "browser": { "enabled": true } } },
+  "browser": { "enabled": true, "profiles": { "openclaw": { "driver": "openclaw", "engine": "chromium", "noSandbox": true } } }
+}
+```
+
+**Pontos importantes que aprendemos:**
+- O ID da ferramenta browser é exatamente `"browser"` (não `openclaw:browser:browser`)
+- O gateway precisa de ~40s para subir com o plugin browser totalmente carregado — o script espera `connectivity check: ok` antes de disparar o agente
+- O processo do gateway se chama `openclaw-gateway` (hífen), então o `pkill` precisa casar `openclaw[- ]gateway`
+- O agente roda com `openclaw agent --message` (via gateway), não `agent exec` (embutido)
+
 ### 5. Os resultados voltam
 
 Cada máquina imprime `MISSAO_OK` se deu certo. O `run_fleet_cli.py` junta tudo e mostra:

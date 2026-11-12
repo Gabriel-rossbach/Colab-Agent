@@ -27,6 +27,16 @@ log_level: "info"
 # Automation / Debug mode
 # When enabled: skips TUI, uses mock_prompt below, runs in terminal with full logs
 automation:
-  enabled: true
-  mock_prompt: "pesquise 5 plugins do OpenClaw e traga em português"
+  enabled: false
+  mock_prompt: "Use browser para navegar até https://example.com, tire um snapshot da página, faça um screenshot e descreva em português o que você vê na tela."
   timeout_minutes: 120  # máximo 2 horas para debug
+
+# Browser tool (Chromium/Playwright) nos executores
+# Se true: instala Chromium e habilita browser tool (login, screenshots, JS, cliques)
+# Se false: usa apenas web_search (DuckDuckGo) — mais leve
+browser:
+  enabled: true
+  # Quando usar browser vs web_search:
+  # - web_search: fatos públicos, múltiplas fontes, rápido
+  # - browser: login, formulários, JS pesado, screenshots, cliques
+  profile: "full"  # tool profile do OpenClaw

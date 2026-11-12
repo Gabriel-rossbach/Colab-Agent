@@ -1,57 +1,57 @@
-# Cleanup & Maintenance
+# Limpeza e manutenção
 
-## Automatic Cleanup
+## Limpeza automática
 
-### Stop All Sessions
+### Parar todas as sessões
 ```bash
 python3 stop_all.py
-# Detects active sessions via `colab sessions` regex
-# Stops all in parallel
+# Detecta sessões ativas via regex em `colab sessions`
+# Para todas em paralelo
 ```
 
-### What Gets Cleaned
-- Colab sessions (cpu1-cpu6)
-- No local artifacts (JSONL, reports persist in `/tmp` or `--out`)
+### O que é limpo
+- Sessões Colab (cpu1–cpu6)
+- Nenhum artefato local (JSONL, relatórios persistem em `/tmp` ou `--out`)
 
-## Manual Cleanup
+## Limpeza manual
 
-### Colab CLI
+### CLI do Colab
 ```bash
-# List
+# Listar
 colab sessions
 
-# Stop specific
+# Parar específica
 colab stop -s cpu1
 
-# Remove session (permanent)
+# Remover sessão (permanente)
 colab rm -s cpu1
 ```
 
-### Local Artifacts
+### Artefatos locais
 ```bash
-# Remove temp runs
+# Remover runs temporárias
 rm -rf /tmp/fleet-*.json /tmp/run_*
 
-# Remove plugin build cache
+# Remover cache de build do plugin
 rm -rf /root/openclaw-plugins/web-search/node_modules
 rm -rf /root/openclaw-plugins/web-search/dist
 
-# Clear OpenClaw state (nuclear)
+# Limpar estado do OpenClaw (opção nuclear)
 openclaw reset
 ```
 
-## Dependency Updates
+## Atualização de dependências
 
 ### Python
 ```bash
-# Update skill deps
+# Atualizar deps da skill
 pip install -U textual colab-cli duckduckgo-search python-dotenv
 
-# Check outdated
+# Ver desatualizadas
 pip list --outdated
 ```
 
-### Node (Plugin)
+### Node (plugin)
 ```bash
 cd /root/openclaw-plugins/web-search
 npm update
@@ -60,45 +60,45 @@ npm audit fix
 
 ### OpenClaw
 ```bash
-# Update CLI
+# Atualizar a CLI
 curl -fsSL https://openclaw.ai/install.sh | bash
 
-# Check version
+# Ver versão
 openclaw --version
 ```
 
-## Log Rotation
+## Rotação de logs
 
 ```bash
-# Gateway logs (per machine, in Colab)
-# /tmp/gateway.log - overwritten each run
+# Logs do gateway (por máquina, no Colab)
+# /tmp/gateway.log - sobrescrito a cada run
 
-# Local orchestrator logs
-# Only in TUI / stdout; no persistent files
+# Logs do orquestrador local
+# Apenas na TUI / stdout; sem arquivos persistentes
 ```
 
-## Disk Space
+## Espaço em disco
 
 ```bash
-# Check Colab disk (in session)
+# Ver disco no Colab (na sessão)
 df -h /content
 
-# Check local
+# Ver local
 df -h ~
 ```
 
-## Scheduled Maintenance (Cron)
+## Manutenção agendada (cron)
 
 ```bash
-# Weekly: stop orphaned sessions, update deps
+# Semanal: parar sessões órfãs, atualizar deps
 0 3 * * 0 /home/apolo/ia/stop_all.py && pip install -U textual colab-cli
 ```
 
-## Troubleshooting Cleanup Issues
+## Solução de problemas de limpeza
 
-| Issue | Fix |
-|-------|-----|
-| `colab stop` hangs | `colab stop -s name --force` (if supported) or wait |
-| Session stuck "READY" but not SSH-able | `colab rm -s name` then `colab new -s name` |
-| Local disk full | `docker system prune -a` if using Docker; `pip cache purge` |
-| Plugin reinstall fails | `rm -rf /root/.openclaw/extensions/web-search` then reinstall |
+| Problema | Correção |
+|----------|----------|
+| `colab stop` trava | `colab stop -s nome --force` (se suportado) ou aguarde |
+| Sessão presa em "READY" mas sem SSH | `colab rm -s nome` e depois `colab new -s nome` |
+| Disco local cheio | `docker system prune -a` se usar Docker; `pip cache purge` |
+| Reinstalação do plugin falha | `rm -rf /root/.openclaw/extensions/web-search` e reinstale |

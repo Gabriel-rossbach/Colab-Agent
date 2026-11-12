@@ -1,13 +1,13 @@
-# OpenClaw Integration Reference
+# Referência de integração com o OpenClaw
 
 ## Plugin: web-search
 
-### Installation (Local Plugin)
+### Instalação (plugin local)
 ```bash
-# Create plugin structure
+# Criar a estrutura do plugin
 mkdir -p /root/openclaw-plugins/web-search/src
 
-# Write plugin files (see skill/colab-agent-fleet/scripts/ for template)
+# Escrever os arquivos do plugin (veja skill/colab-agent-fleet/scripts/ para o modelo)
 # package.json, tsconfig.json, src/index.ts, src/duckduckgo-search.d.ts
 
 # Build
@@ -15,11 +15,11 @@ cd /root/openclaw-plugins/web-search
 npm install duckduckgo-search
 npm run plugin:build
 
-# Install
+# Instalar
 openclaw plugins install /root/openclaw-plugins/web-search --force --accept-capabilities
 ```
 
-### Plugin Structure
+### Estrutura do plugin
 ```typescript
 // src/index.ts
 import { Type } from "typebox";
@@ -28,13 +28,13 @@ import { defineToolPlugin } from "openclaw/plugin-sdk/tool-plugin";
 export default defineToolPlugin({
   id: "web-search",
   name: "Web Search",
-  description: "Add Web Search tools to OpenClaw via DuckDuckGo.",
+  description: "Adiciona ferramentas de busca web ao OpenClaw via DuckDuckGo.",
   tools: (tool) => [
     tool({
       name: "web_search",
-      description: "Search the web via DuckDuckGo and return results.",
+      description: "Busca na web via DuckDuckGo e retorna resultados.",
       parameters: Type.Object({
-        query: Type.String({ description: "Search query string." }),
+        query: Type.String({ description: "String da consulta de busca." }),
         max_results: Type.Optional(Type.Integer({ minimum: 1, maximum: 20 })),
       }),
       execute: async ({ query, max_results = 5 }) => {
@@ -47,46 +47,46 @@ export default defineToolPlugin({
 });
 ```
 
-## Gateway Configuration
+## Configuração do gateway
 
-### For Embedded Agent Exec (Fast, No Network)
+### Para agent exec embutido (rápido, sem rede)
 ```bash
-# No gateway needed for --local-model-lean
+# Não precisa de gateway para --local-model-lean
 openclaw agent exec "prompt" --model nvidia/nemotron-3.5-lightning-30b-a3b --local-model-lean
 ```
 
-### For Plugin Tools (Requires Gateway)
+### Para ferramentas de plugin (exige gateway)
 ```bash
-# Start gateway (dev mode, no auth, loopback only)
+# Inicia o gateway (modo dev, sem auth, somente loopback)
 openclaw gateway run --dev --force --allow-unconfigured --auth none --bind loopback &
 
 # Health-check
 curl -sf http://localhost:19000/health
 
-# Then run agent (will connect to gateway for tool calls)
+# Depois roda o agente (vai conectar ao gateway para as chamadas de ferramenta)
 openclaw agent exec "Use web_search para..." --model nvidia/nemotron-3.5-lightning-30b-a3b
 ```
 
-### Gateway Flags Explained
-| Flag | Purpose |
-|------|---------|
-| `--dev` | Dev config + workspace if missing |
-| `--force` | Kill existing listener on port |
-| `--allow-unconfigured` | Skip gateway.mode check |
-| `--auth none` | No token/password required |
-| `--bind loopback` | Only 127.0.0.1 (no external exposure) |
+### Flags do gateway explicadas
+| Flag | Finalidade |
+|------|------------|
+| `--dev` | Config de dev + workspace se faltar |
+| `--force` | Mata o listener existente na porta |
+| `--allow-unconfigured` | Pula a checagem de gateway.mode |
+| `--auth none` | Sem token/senha obrigatório |
+| `--bind loopback` | Só 127.0.0.1 (sem exposição externa) |
 
-## Agent Exec Modes
+## Modos de agent exec
 
-| Mode | Flag | Gateway | Tools | Speed |
-|------|------|---------|-------|-------|
-| Embedded (lean) | `--local-model-lean` | No | Core only | Fastest |
-| Embedded (full) | (none) | No | All local | Fast |
-| Via Gateway | (default) | Yes | All (incl. plugins) | Slower |
+| Modo | Flag | Gateway | Ferramentas | Velocidade |
+|------|------|---------|-------------|------------|
+| Embutido (lean) | `--local-model-lean` | Não | Só core | Mais rápido |
+| Embutido (full) | (nenhuma) | Não | Todas as locais | Rápido |
+| Via gateway | (default) | Sim | Todas (incl. plugins) | Mais lento |
 
-**Fleet uses**: Embedded lean for speed, but **gateway must run** for plugin tools (web_search).
+**A fleet usa**: embutido lean pela velocidade, mas **o gateway precisa estar rodando** para as ferramentas de plugin (web_search).
 
-## NVIDIA NIMs Configuration
+## Configuração dos NVIDIA NIMs
 
 ```bash
 openclaw config set models.providers.nvidia.baseUrl "https://integrate.api.nvidia.com/v1"
@@ -94,21 +94,21 @@ openclaw config set models.providers.nvidia.api "openai-completions"
 openclaw config set agents.defaults.model "nvidia/nemotron-3.5-lightning-30b-a3b"
 openclaw config set agents.defaults.timeoutSeconds 1800
 
-# Auth (one-time per session)
+# Auth (uma vez por sessão)
 echo "$NVIDIA_API_KEY" | openclaw models auth paste-api-key --provider nvidia
 ```
 
-## Common Issues
+## Problemas comuns
 
-| Issue | Fix |
-|-------|-----|
-| `web_search is disabled` | Gateway not running OR plugin not installed OR plugin not enabled |
-| `plugin tool name conflict` | Multiple plugins register same tool name; accept conflict or rename |
-| `SQLite offline maintenance` | Wait or restart gateway; stagger launches |
-| `gateway.mode missing` | `openclaw config set gateway.mode local` or use `--allow-unconfigured` |
-| `auth required for plugins.enable` | Gateway needs auth; use `--auth none` for dev |
+| Problema | Correção |
+|----------|----------|
+| `web_search is disabled` | Gateway não está rodando OU plugin não instalado OU plugin não habilitado |
+| `plugin tool name conflict` | Vários plugins registram a mesma ferramenta; aceite o conflito ou renomeie |
+| `SQLite offline maintenance` | Aguarde ou reinicie o gateway; espace os disparos |
+| `gateway.mode missing` | `openclaw config set gateway.mode local` ou use `--allow-unconfigured` |
+| `auth required for plugins.enable` | O gateway exige auth; use `--auth none` em dev |
 
-## Agent Config (agents/openai.yaml)
+## Config do agente (agents/openai.yaml)
 ```yaml
 model: "nvidia/nemotron-3.5-lightning-30b-a3b"
 provider: "nvidia"

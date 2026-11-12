@@ -1,32 +1,32 @@
-# Promotion Gates Reference
+# Referência dos promotion gates
 
-## Purpose
+## Finalidade
 
-Promotion gates ensure **evidence quality** before results are considered "promoted" (ready for use/report). They run post-execution on aggregated fleet results.
+Os promotion gates garantem a **qualidade das evidências** antes que os resultados sejam considerados "promovidos" (prontos para uso/relatório). Eles rodam pós-execução sobre os resultados agregados da fleet.
 
-## Default Gates
+## Gates padrão
 
 ```python
 PROMOTION_GATES_DEFAULTS = {
-    "min_unique_sources": 3,      # Minimum distinct domains in results
-    "max_dup_ratio": 0.15,        # Max fraction of duplicate results
-    "min_chars_per_result": 200,  # Minimum content per result
-    "min_success_ratio": 0.7,     # Min 70% tasks must succeed
+    "min_unique_sources": 3,      # Mínimo de domínios distintos nos resultados
+    "max_dup_ratio": 0.15,        # Fração máxima de resultados duplicados
+    "min_chars_per_result": 200,  # Conteúdo mínimo por resultado
+    "min_success_ratio": 0.7,     # Mínimo de 70% das tarefas devem ter sucesso
 }
 ```
 
-## Gate Logic
+## Lógica dos gates
 
-### 1. Success Ratio Gate
+### 1. Gate de taxa de sucesso
 ```python
 successful = sum(1 for r in results if r.get("sucesso"))
 ratio = successful / len(results)
 pass = ratio >= min_success_ratio
 ```
 
-### 2. Unique Sources Gate
+### 2. Gate de fontes únicas
 ```python
-# Extract domains from result URLs
+# Extrai domínios das URLs dos resultados
 domains = set()
 for r in successful_results:
     for result in parse_results(r["saida_bruta"]):
@@ -34,22 +34,22 @@ for r in successful_results:
 pass = len(domains) >= min_unique_sources
 ```
 
-### 3. Duplicate Ratio Gate
+### 3. Gate de taxa de duplicatas
 ```python
-# Compare result titles/URLs for similarity
+# Compara títulos/URLs dos resultados por similaridade
 all_results = flatten([parse_results(r["saida_bruta"]) for r in successful_results])
-unique = dedup(all_results, threshold=0.9)  # 90% similarity = duplicate
+unique = dedup(all_results, threshold=0.9)  # 90% de similaridade = duplicata
 dup_ratio = 1 - (len(unique) / len(all_results))
 pass = dup_ratio <= max_dup_ratio
 ```
 
-### 4. Content Depth Gate
+### 4. Gate de profundidade do conteúdo
 ```python
-# Each result must have substantial content
+# Cada resultado precisa de conteúdo substantial
 pass = all(len(r.get("snippet", "")) >= min_chars_per_result for r in unique_results)
 ```
 
-## Gate Output
+## Saída dos gates
 
 ```json
 {
@@ -70,18 +70,18 @@ pass = all(len(r.get("snippet", "")) >= min_chars_per_result for r in unique_res
 }
 ```
 
-## Custom Gates (via `--gates` JSON)
+## Gates customizados (via JSON em `--gates`)
 
 ```bash
 python3 run_fleet.py --plan plan.json --out /tmp/run \
   --gates '{"min_unique_sources": 5, "min_success_ratio": 0.8}'
 ```
 
-## CI Integration
+## Integração com CI
 
 ```yaml
 # .github/workflows/validate-fleet.yml
-- name: Run fleet with gates
+- name: Rodar a fleet com gates
   run: |
     python3 -m colab_agent_fleet.scripts.run_fleet \
       --plan fleet-plan.json \
@@ -90,29 +90,29 @@ python3 run_fleet.py --plan plan.json --out /tmp/run \
       --gates '{"min_success_ratio": 0.8}'
 ```
 
-## Failure Handling
+## Tratamento de falhas
 
-| Gate Failed | Action |
-|-------------|--------|
-| Success ratio < 70% | Retry failed tasks (re-run with same plan) |
-| Unique sources < 3 | Expand search queries; add more tasks |
-| Dup ratio > 15% | Increase query diversity in planner prompt |
-| Content depth < 200 chars | Adjust prompt to request more detail |
+| Gate reprovado | Ação |
+|----------------|------|
+| Taxa de sucesso < 70% | Repetir as tarefas que falharam (re-rodar com o mesmo plano) |
+| Fontes únicas < 3 | Expandir as queries de busca; adicionar mais tarefas |
+| Taxa de duplicatas > 15% | Aumentar a diversidade das queries no prompt do planejador |
+| Profundidade < 200 caracteres | Ajustar o prompt para pedir mais detalhes |
 
-## Promotion Bundle
+## Bundle de promoção
 
-When all gates pass, generate promotion bundle:
+Quando todos os gates passam, gere o bundle de promoção:
 
 ```bash
 python3 -m colab_agent_fleet.scripts.render_fleet_summary \
   --results /tmp/run.jsonl \
   --gates /tmp/run_gates.json \
-  --request "original request" \
+  --request "pedido original" \
   --out /tmp/promotion_bundle.md
 ```
 
-Bundle includes:
-- Gate pass/fail status with metrics
-- Per-machine task results
-- Top sources by domain
-- Redacted for public sharing
+O bundle inclui:
+- Status pass/fail dos gates com as métricas
+- Resultados por máquina
+- Principais fontes por domínio
+- Redactado para compartilhamento público

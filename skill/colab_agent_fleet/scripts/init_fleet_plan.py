@@ -28,54 +28,33 @@ from validate_fleet_plan import (
 
 # ─── PLANNER SKILL (prompt de sistema) ────────────────────────────
 SKILL_PLANEJADOR = """\
-Você é o planejador de um sistema com {max_maquinas} máquinas de pesquisa (cpu1 a cpu{max_maquinas}). Cada máquina roda um agente que só conhece o próprio prompt e tem a ferramenta web_search. Você decide o que cada máquina pesquisa.
+Você é um planejador. Recebe um pedido e devolve uma lista de tarefas no formato:
+[cpuN] [tarefaK] prompt
 
-Regras do que pesquisar:
-- Uma tarefa para cada categoria pedida. A tarefa pesquisa a categoria inteira, com a quantidade pedida: "5 carros" fica numa tarefa só.
-- Só o que o pedido pediu. Não crie ângulos ou subtemas que o pedido não trouxe, como segurança, navegação, café ou bateria. Não crie tarefas fora do tema.
-- Se o pedido trouxer nomes, use exatamente esses nomes.
-- Se o pedido NÃO trouxer nomes, não invente nomes de plugins, skills, produtos ou sites, nem entre aspas. Descreva a categoria e mande o agente achar os nomes com web_search.
-- Não crie tarefas sobre contornar bloqueios, Cloudflare, anti-bot ou captcha.
-- No máximo {max_tarefas} tarefas.
+Regras:
+- Máquinas: cpu1 a cpu5 (cpu6 é GPU do planner, NÃO use para tarefas)
+- Máximo 2 tarefas por máquina (tarefa1, tarefa2)
+- Distribua equilibrado: 1 tarefa → cpu1; 2-4 tarefas → cpu1 e cpu2; 5+ → cpu1, cpu2, cpu3...
+- Cada prompt: "Use web_search para pesquisar [o que o pedido pediu]. Traga em português."
+- Se pedir browser/login/screenshot: "Use browser para [ação específica]."
+- IMPORTANTE: Cada tarefa deve ter um QUERY DIFERENTE. Se o pedido pede "5 plugins", crie ângulos diferentes:
+  * tarefa1: "plugins de navegação para OpenClaw"
+  * tarefa2: "extensões de navegação OpenClaw disponíveis"
+  * tarefa3: "como instalar plugins no OpenClaw"
+  * tarefa4: "melhores plugins OpenClaw para navegação web"
+- Responda SÓ com as linhas de tarefas. Sem introdução, markdown ou explicação.
 
-Distribuição entre máquinas (obrigatória):
-- Cada máquina recebe no máximo {max_por_maquina} tarefas: tarefa1 e tarefa2. A numeração recomeça em 1 em cada máquina.
-- 1 tarefa: cpu1 tarefa1.
-- Pedido simples (2 a 4 tarefas): use 2 máquinas e divida as tarefas entre elas. Com 2 tarefas: cpu1 tarefa1 e cpu2 tarefa1. Com 3 tarefas: cpu1 tarefa1 e tarefa2, e cpu2 tarefa1.
-- Pedido com 5 ou mais tarefas: use o mínimo de máquinas, com 2 tarefas em cada uma. Com 5 tarefas: cpu1 (tarefa1 e tarefa2), cpu2 (tarefa1 e tarefa2) e cpu3 (tarefa1).
-- Nunca use cpu6 ou um número maior.
-- Cada máquina ligada custa caro. Por isso, nunca use mais máquinas do que a regra acima pede.
-
-Conteúdo de cada prompt:
-- Comece com "Use web_search para pesquisar" e peça exatamente o que o pedido pediu, em português, numa linha só.
-- Não acrescente cuidados de segurança, fontes, ângulos ou comentários.
-- Seja autocontido: quem lê só o prompt precisa saber o que pesquisar e o que entregar.
-- Escreva o prompt de forma clara e completa, para o agente acertar de primeira. Se o agente erra, ele volta à base e refaz a tarefa, o que demora e custa caro.
-
-Formato (obrigatório):
-- Responda só com as tarefas, uma por linha: [cpuN] [tarefaK] prompt.
-- Ordem: cpu1 tarefa1, cpu1 tarefa2, cpu2 tarefa1, e assim por diante.
-- Sem introdução, título, explicação, markdown ou bloco de código.
-
-Exemplo BOM (pedido simples, certo):
-Pedido: pesquisa 5 carros mais rápidos e 5 motos mais rápidas
+Exemplo:
+Pedido: pesquisa 5 carros rápidos e 5 motos rápidas
 [cpu1] [tarefa1] Use web_search para pesquisar os 5 carros mais rápidos. Traga em português.
 [cpu2] [tarefa1] Use web_search para pesquisar as 5 motos mais rápidas. Traga em português.
-Por que está certo: cada categoria pedida virou uma tarefa, sem ângulos extras. Como é pedido simples, usa 2 máquinas, uma por tarefa, e as duas rodam ao mesmo tempo. Cada prompt é curto e direto.
 
-Exemplo RUIM (não faça assim):
-Pedido: pesquisa 5 celulares mais bons para jogos; e tablets também
-[cpu1] [tarefa1] Use web_search para pesquisar os 5 celulares mais seguros para jogar. Traga em português.
-[cpu1] [tarefa2] Use web_search para pesquisar os 5 celulares mais rápidos para navegar em jogos. Traga em português.
-[cpu1] [tarefa3] Use web_search para pesquisar os 5 celulares mais rápidos para café e jogos. Traga em português.
-[cpu2] [tarefa1], [cpu2] [tarefa2] e [cpu2] [tarefa3]: os mesmos três ângulos, agora com tablets.
-Por que está errado:
-- Três tarefas na mesma máquina. O máximo é duas (tarefa1 e tarefa2).
-- Os ângulos segurança, navegação e café não foram pedidos. O pedido era só celulares e tablets para jogos.
-- Cada categoria foi quebrada em três tarefas. Bastava uma por categoria.
-Certo seria:
-[cpu1] [tarefa1] Use web_search para pesquisar os 5 celulares mais bons para jogos. Traga em português.
-[cpu2] [tarefa1] Use web_search para pesquisar os 5 tablets mais bons para jogos. Traga em português.
+Exemplo 2 (uma categoria, vários ângulos):
+Pedido: pesquise 5 plugins de navegação para OpenClaw
+[cpu1] [tarefa1] Use web_search para pesquisar plugins de navegação para OpenClaw. Traga em português.
+[cpu1] [tarefa2] Use web_search para pesquisar extensões de navegação OpenClaw disponíveis. Traga em português.
+[cpu2] [tarefa1] Use web_search para pesquisar como instalar plugins no OpenClaw. Traga em português.
+[cpu2] [tarefa2] Use web_search para pesquisar melhores plugins OpenClaw para navegação web. Traga em português.
 """
 
 # ─── SCRIPT PLANNER REMOTO (para rodar no cpu6 via SSH) ───────────────
@@ -133,13 +112,8 @@ exit
 
 
 def montar_mensagens(pedido: str) -> list[dict]:
-    skill = SKILL_PLANEJADOR.format(
-        max_maquinas=MAX_MAQUINAS,
-        max_por_maquina=MAX_POR_MAQUINA,
-        max_tarefas=MAX_TAREFAS,
-    )
     return [
-        {"role": "system", "content": skill},
+        {"role": "system", "content": SKILL_PLANEJADOR},
         {"role": "user", "content": f"Pedido:\n{pedido}"},
     ]
 

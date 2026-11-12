@@ -1,61 +1,61 @@
-# Security Policy
+# Política de Segurança
 
-## Reporting a Vulnerability
+## Reportando uma vulnerabilidades
 
-**Do not file public issues for security vulnerabilities.**
+**Não abra issues públicas para vulnerabilidades de segurança.**
 
-Email: security@seu-dominio.com (or GitHub Security Advisories)
+Email: security@seu-dominio.com (ou GitHub Security Advisories)
 
-Include:
-- Description of the vulnerability
-- Steps to reproduce
-- Potential impact
-- Suggested fix (if any)
+Inclua:
+- Descrição da vulnerabilidade
+- Passos para reproduzir
+- Impacto potencial
+- Correção sugerida (se houver)
 
-We'll acknowledge within 48 hours and coordinate disclosure.
+Responderemos em até 48 horas e coordenaremos a divulgação.
 
-## Supported Versions
+## Versões suportadas
 
-| Version | Supported |
-|---------|-----------|
-| 0.1.x   | ✅ Yes    |
+| Versão | Suportada |
+|--------|-----------|
+| 0.1.x  | ✅ Sim    |
 
-## Security Practices
+## Práticas de segurança
 
-### Secrets Management
-- **Never commit** `.env`, API keys, tokens, or session IDs
-- Use `.env.example` for template
-- All scripts use `fleet_public_safety.py` for output redaction
-- CI scans for secrets on every PR
+### Gerenciamento de segredos
+- **Nunca commite** `.env`, chaves de API, tokens ou IDs de sessão
+- Use `.env.example` como modelo
+- Todos os scripts usam `fleet_public_safety.py` para redação das saídas
+- O CI escaneia segredos em cada PR
 
-### Colab Sessions
-- Each session = unique public IP (Google Cloud)
-- No persistent credentials stored in Colab
-- Sessions stopped after use (`stop_all.py`)
-- No SSH keys stored; uses `colab` CLI OAuth
+### Sessões Colab
+- Cada sessão = IP público único (Google Cloud)
+- Nenhuma credencial persistente é guardada no Colab
+- Sessões são encerradas após o uso (`stop_all.py`)
+- Nenhuma chave SSH é guardada; usa OAuth da CLI `colab`
 
 ### OpenClaw
-- Gateway runs with `--auth none --bind loopback` (local only)
-- NVIDIA API key injected at runtime via stdin
-- Plugin installed from local path (not registry)
-- No telemetry sent to external services
+- O gateway roda com `--auth none --bind loopback` (somente local)
+- A chave de API da NVIDIA é injetada em tempo de execução via stdin
+- O plugin é instalado de caminho local (não do registro)
+- Nenhuma telemetria é enviada a serviços externos
 
-### Data Handling
-- Research results stored locally (JSONL + markdown)
-- No automatic upload to external services
-- Promotion gates filter before any "promotion"
-- Redaction applied to all public outputs
+### Tratamento de dados
+- Resultados de pesquisa ficam locais (JSONL + markdown)
+- Nenhum upload automático para serviços externos
+- Os promotion gates filtram antes de qualquer "promoção"
+- Redação (redaction) aplicada em todas as saídas públicas
 
-## Threat Model
+## Modelo de ameaças
 
-| Asset | Threat | Mitigation |
-|-------|--------|------------|
-| NVIDIA API key | Leak via logs/git | Redaction, .gitignore, env-only |
-| Colab session ID | Hijack | Short-lived, stopped after use |
-| Research data | Exfiltration | Local-only, no auto-upload |
-| Plugin code | Supply chain | Local build, no registry dep |
-| Gateway | Unauthorized access | Loopback bind, no auth (dev only) |
+| Ativo | Ameaça | Mitigação |
+|-------|--------|-----------|
+| Chave de API da NVIDIA | Vazamento via logs/git | Redação, .gitignore, somente env |
+| ID da sessão Colab | Sequestro (hijack) | Curta duração, encerrada após o uso |
+| Dados de pesquisa | Exfiltração | Somente local, sem upload automático |
+| Código do plugin | Cadeia de suprimentos (supply chain) | Build local, sem dependência de registro |
+| Gateway | Acesso não autorizado | Bind em loopback, sem auth (só dev) |
 
-## Responsible Disclosure
+## Divulgação responsável
 
-We follow coordinated vulnerability disclosure. If you find a security issue, we'll work with you to fix it before public disclosure.
+Seguimos a divulgação coordenada de vulnerabilidades. Se você encontrar um problema de segurança, trabalharemos com você para corrigi-lo antes da divulgação pública.
