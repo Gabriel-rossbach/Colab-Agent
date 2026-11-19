@@ -1,0 +1,10 @@
+{
+  "name": "Painel da Fleet",
+  "short_name": "Fleet",
+  "start_url": ".",
+  "display": "standalone",
+  "background_color": "#101418",
+  "theme_color": "#101418",
+  "description": "Painel de acompanhamento e controle da fleet.",
+  "orientation": "any"
+}

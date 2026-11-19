@@ -33,10 +33,24 @@ O Colab Agent Fleet orquestra uma **arquitetura de duas lanes** para pesquisa we
 
 - **Lane de planejamento** (GPU): LLM local via Ollama — grátis, privado, sem chaves de API
 - **Lane de execução** (fleet de CPU): 5 runtimes Colab com OpenClaw + plugin web_search
-- **Humano no loop**: o dashboard TUI mostra o plano → o usuário confirma → a fleet dispara
-- **Promotion gates**: taxa de sucesso, fontes únicas, deduplicação, profundidade do conteúdo
+- **Humano no loop**: os painéis TUI e Web mostram o plano → o usuário confirma → a fleet dispara
+- **Promotion gate implementado**: taxa mínima de sucesso das tarefas
 - **Reprodutível**: plano da fleet em JSON, captura de contexto, saídas redactadas
 - **Skill OpenClaw**: instalável via `openclaw skills install`
+
+## Painel Web na Oracle
+
+O painel Flutter Web usa uma API Spring Boot same-origin e o motor Python existente. Ele preserva o fluxo de planejamento em cpu6, confirmação humana, execução em cpu1–cpu5, seis painéis de máquina, logs, browser opcional, cancelamento e resultados.
+
+```bash
+cp .env.example .env
+# Preencha NVIDIA_API_KEY e FLEET_API_TOKEN somente no servidor.
+docker compose -f deploy/compose.yaml --env-file .env build
+docker compose -f deploy/compose.yaml --env-file .env run --rm --entrypoint colab backend login
+docker compose -f deploy/compose.yaml --env-file .env up -d
+```
+
+Esses comandos preparam a infraestrutura, mas não criam uma pesquisa. Consulte [implantação e operação do painel web](docs/codex/web-deployment.md) para TLS, autenticação, limites e Nginx alternativo. O Compose não publica a porta interna do backend, e a chave NVIDIA não é enviada ao navegador.
 
 ## Início rápido
 
@@ -45,7 +59,7 @@ O Colab Agent Fleet orquestra uma **arquitetura de duas lanes** para pesquisa we
 ```bash
 mkdir -p "$CODEX_HOME/skills"
 git clone https://github.com/seu-usuario/colab-agent-fleet.git
-rsync -a colab-agent-fleet/skill/colab-agent-fleet/ "$CODEX_HOME/skills/colab-agent-fleet/"
+rsync -a colab-agent-fleet/skill/colab_agent_fleet/ "$CODEX_HOME/skills/colab-agent-fleet/"
 ```
 
 ### 2. Configurar o ambiente
@@ -113,7 +127,7 @@ python3 -m colab_agent_fleet.scripts.render_fleet_summary.py \
 
 ```
 .
-├── skill/colab-agent-fleet/          # Skill OpenClaw
+├── skill/colab_agent_fleet/          # Skill OpenClaw
 │   ├── SKILL.md                      # Manifesto da skill
 │   ├── agents/openai.yaml            # Config do agente (Nemotron + web_search)
 │   ├── scripts/                      # Scripts executáveis
@@ -131,8 +145,12 @@ python3 -m colab_agent_fleet.scripts.render_fleet_summary.py \
 │       ├── promotion-gates.md
 │       ├── dashboard-tui.md
 │       └── public-safety.md
+├── backend/                          # API Spring Boot e supervisor do worker
+├── frontend/                         # Painel Flutter Web
+├── deploy/                           # Docker, Compose, Caddy e Nginx
+├── fleet_worker.py                   # Adaptador JSON Lines Java ↔ Python
 ├── docs/codex/                       # Orientação para agentes Codex
-├── tests/                            # Testes unitários + integração
+├── tests/                            # Testes unitários + integração opt-in
 ├── dashboard.py                      # Orquestrador TUI (raiz)
 ├── stop_all.py                       # Limpa todas as sessões Colab
 ├── pyproject.toml                    # Config do pacote
@@ -143,10 +161,10 @@ python3 -m colab_agent_fleet.scripts.render_fleet_summary.py \
 
 | Doc | Descrição |
 |-----|-----------|
-| `skill/colab-agent-fleet/references/fleet-architecture.md` | Arquitetura, modos de falha, fluxo de dados |
-| `skill/colab-agent-fleet/references/plan-spec.md` | Schema JSON do plano da fleet, regras de distribuição |
-| `skill/colab-agent-fleet/references/promotion-gates.md` | Lógica dos gates, customização, CI |
-| `skill/colab-agent-fleet/references/public-safety.md` | Redefinição (redaction), prevenção de vazamento |
+| `skill/colab_agent_fleet/references/fleet-architecture.md` | Arquitetura, modos de falha, fluxo de dados |
+| `skill/colab_agent_fleet/references/plan-spec.md` | Schema JSON do plano da fleet, regras de distribuição |
+| `skill/colab_agent_fleet/references/promotion-gates.md` | Gate de sucesso, customização e limites |
+| `skill/colab_agent_fleet/references/public-safety.md` | Redefinição (redaction), prevenção de vazamento |
 | `docs/codex/overview.md` | Início rápido do Codex, arquivos-chave |
 | `docs/codex/architecture.md` | Decisões de design, trade-offs |
 | `docs/codex/workflow.md` | Workflow padrão, comandos, troubleshooting |

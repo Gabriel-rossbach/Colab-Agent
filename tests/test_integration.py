@@ -1,19 +1,23 @@
-"""
-Integration tests - require Colab CLI, active sessions, NVIDIA_API_KEY.
-Marked as 'integration' to skip in normal CI.
-Run with: pytest tests/test_integration.py -m integration
+"""Integração real, somente com opt-in explícito e infraestrutura configurada.
+
+Execute deliberadamente com ``FLEET_RUN_INTEGRATION=1`` e ``NVIDIA_API_KEY``.
+A presença da chave, sozinha, nunca habilita estas chamadas externas.
 """
 
-import pytest
 import os
 
+import pytest
 
-# Skip if no Colab or no API key
+
+requires_integration = pytest.mark.skipif(
+    os.getenv("FLEET_RUN_INTEGRATION") != "1",
+    reason="integração desligada; defina FLEET_RUN_INTEGRATION=1 para opt-in",
+)
 requires_colab = pytest.mark.skipif(
     not os.getenv("NVIDIA_API_KEY"),
     reason="NVIDIA_API_KEY not set",
 )
-requires_integration = pytest.mark.integration
+pytestmark = pytest.mark.integration
 
 
 @requires_colab

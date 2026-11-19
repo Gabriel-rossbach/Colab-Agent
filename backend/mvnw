@@ -1,0 +1,43 @@
+#!/bin/sh
+set -eu
+
+BASE_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+WRAPPER_DIR="$BASE_DIR/.mvn/wrapper"
+WRAPPER_JAR="$WRAPPER_DIR/maven-wrapper.jar"
+WRAPPER_PROPERTIES="$WRAPPER_DIR/maven-wrapper.properties"
+
+if [ -n "${JAVA_HOME:-}" ]; then
+    JAVA_CMD="$JAVA_HOME/bin/java"
+else
+    JAVA_CMD=$(command -v java || true)
+fi
+
+if [ -z "${JAVA_CMD:-}" ] || [ ! -x "$JAVA_CMD" ]; then
+    echo "Java não encontrado. Configure JAVA_HOME ou adicione java ao PATH." >&2
+    exit 1
+fi
+
+if [ ! -f "$WRAPPER_JAR" ]; then
+    WRAPPER_URL=$(sed -n 's/^wrapperUrl=//p' "$WRAPPER_PROPERTIES" | tail -n 1)
+    if [ -z "$WRAPPER_URL" ]; then
+        echo "wrapperUrl não configurado em .mvn/wrapper/maven-wrapper.properties." >&2
+        exit 1
+    fi
+    TEMP_JAR="$WRAPPER_JAR.tmp.$$"
+    trap 'rm -f "$TEMP_JAR"' EXIT HUP INT TERM
+    if command -v curl >/dev/null 2>&1; then
+        curl -fsSL "$WRAPPER_URL" -o "$TEMP_JAR"
+    elif command -v wget >/dev/null 2>&1; then
+        wget -q "$WRAPPER_URL" -O "$TEMP_JAR"
+    else
+        echo "curl ou wget é necessário para baixar o Maven Wrapper." >&2
+        exit 1
+    fi
+    mv "$TEMP_JAR" "$WRAPPER_JAR"
+    trap - EXIT HUP INT TERM
+fi
+
+exec "$JAVA_CMD" \
+    -Dmaven.multiModuleProjectDirectory="$BASE_DIR" \
+    -classpath "$WRAPPER_JAR" \
+    org.apache.maven.wrapper.MavenWrapperMain "$@"

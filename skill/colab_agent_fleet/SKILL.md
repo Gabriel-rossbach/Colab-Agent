@@ -110,7 +110,7 @@ Se o objetivo principal for pesquisa profunda em máquina única, use um loop de
 
 - Cada máquina de CPU roda setup idêntico: OpenClaw + NVIDIA NIMs + plugin web_search
 - Agentes rodam via `openclaw agent exec` com `--local-model-lean` pela velocidade
-- Gateway inicia com `--auth none --bind loopback` para acesso local às ferramentas
+- Com browser, o gateway local inicia em loopback; sem browser, o agente usa `openclaw agent exec` diretamente
 - Resultados capturados como JSONL; cada tarefa retorna evidência estruturada
 - Problemas de lock no SQLite são mitigados espaçando os disparos (pipeline: escalonamento de 60s)
 
@@ -118,11 +118,8 @@ Se o objetivo principal for pesquisa profunda em máquina única, use um loop de
 
 - Cada tarefa deve retornar: query, results[title, url, snippet], timestamp, machine
 - Dedup na fleet: similaridade de URL + título > 0.9 = duplicata
-- Promotion gates (configuráveis):
-  - `min_unique_sources`: mínimo de domínios distintos (default 3)
-  - `max_dup_ratio`: fração máxima de duplicatas (default 0.15)
-  - `min_chars_per_result`: conteúdo mínimo por resultado (default 200)
-- Resultados só são promovidos se os gates passarem; senão, são marcados para revisão
+- Promotion gate implementado e configurável: `min_success_ratio` (default 0.7)
+- Resultados só passam pelo gate quando a taxa de sucesso calculado atinge o mínimo; fontes únicas, dedup e profundidade ainda não são calculadas por esta versão
 
 ### Regras de distribuição pública
 

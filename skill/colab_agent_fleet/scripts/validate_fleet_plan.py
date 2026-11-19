@@ -46,7 +46,11 @@ def etiquetas_esperadas(total: int) -> list[tuple[int, int]]:
     return [(cpu, k) for cpu, tamanho in enumerate(tamanhos, start=1) for k in range(1, tamanho + 1)]
 
 
-def validar_plano_json(plan: dict[str, Any], request: str = "") -> tuple[bool, list[str]]:
+def validar_plano_json(
+    plan: dict[str, Any],
+    request: str = "",
+    browser_enabled: bool = True,
+) -> tuple[bool, list[str]]:
     """
     Valida um fleet plan JSON.
     Espera: {"tasks": [{"cpu": 1, "task": 1, "prompt": "..."}, ...], ...}
@@ -54,6 +58,8 @@ def validar_plano_json(plan: dict[str, Any], request: str = "") -> tuple[bool, l
     erros = []
 
     # Estrutura básica
+    if not isinstance(plan, dict):
+        return False, ["plan deve ser um objeto JSON"]
     if "tasks" not in plan:
         erros.append("campo 'tasks' ausente no plan")
         return False, erros
@@ -78,12 +84,16 @@ def validar_plano_json(plan: dict[str, Any], request: str = "") -> tuple[bool, l
             continue
         cpu = t.get("cpu")
         task_num = t.get("task")
-        prompt = t.get("prompt", "").strip()
+        prompt_valor = t.get("prompt", "")
+        if not isinstance(prompt_valor, str):
+            erros.append(f"tarefa {i}: 'prompt' deve ser string")
+            continue
+        prompt = prompt_valor.strip()
 
-        if not isinstance(cpu, int) or not 1 <= cpu <= MAX_MAQUINAS:
+        if type(cpu) is not int or not 1 <= cpu <= MAX_MAQUINAS:
             erros.append(f"{_rotulo(cpu, task_num)}: cpu{cpu} não existe; use só de cpu1 a cpu{MAX_MAQUINAS}")
             continue
-        if not isinstance(task_num, int) or not 1 <= task_num <= MAX_POR_MAQUINA:
+        if type(task_num) is not int or not 1 <= task_num <= MAX_POR_MAQUINA:
             erros.append(
                 f"{_rotulo(cpu, task_num)}: a numeração recomeça em 1 em cada máquina; "
                 f"cada máquina tem só tarefa1 e tarefa{MAX_POR_MAQUINA}"
@@ -95,6 +105,8 @@ def validar_plano_json(plan: dict[str, Any], request: str = "") -> tuple[bool, l
         is_browser = any(kw in prompt.lower() for kw in ("browser", "navegador", "chromium", "playwright", "screenshot", "login", "formulário", "clicar", "clique"))
         if "web_search" not in prompt.lower() and not is_browser:
             erros.append(f"{_rotulo(cpu, task_num)}: o prompt não manda usar web_search nem browser")
+        if is_browser and not browser_enabled:
+            erros.append(f"{_rotulo(cpu, task_num)}: usa browser, mas o browser está desabilitado nesta run")
         # Also check for "Web_search" or "WEB_SEARCH" variants
         # (already covered by .lower())
 
@@ -118,8 +130,8 @@ def validar_plano_json(plan: dict[str, Any], request: str = "") -> tuple[bool, l
             erros.append(f"as etiquetas não batem com {total} tarefas. Use exatamente estas: {certas}")
 
     # Regras de prompt
-    request_lower = request.lower()
-    request_sem_aspas = bool(request.strip()) and '"' not in request
+    request_lower = request.lower() if isinstance(request, str) else ""
+    request_sem_aspas = isinstance(request, str) and bool(request.strip()) and '"' not in request
     for cpu, k, prompt in recebidas:
         rot = _rotulo(cpu, k)
         if request_sem_aspas and PADRAO_ASPAS.search(prompt):

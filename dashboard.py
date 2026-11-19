@@ -134,7 +134,14 @@ class ColabOrchestrator(App):
             modelo = os.getenv("MODELO_PLANEJADOR", "gpt-oss:20b")
             flags_gpu = os.getenv("FLAGS_GPU", "--gpu t4")
             plano_obj = await asyncio.to_thread(
-                gerar_plano, pedido, modelo, 2, "cpu6", log_cpu6.write, flags_gpu
+                gerar_plano,
+                pedido,
+                modelo,
+                2,
+                "cpu6",
+                log_cpu6.write,
+                flags_gpu,
+                browser_enabled=use_browser,
             )
 
             if not plano_obj:

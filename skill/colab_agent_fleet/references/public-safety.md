@@ -36,7 +36,7 @@ MODELO_PLANEJADOR=gpt-oss:20b
 MAQUINAS=cpu1,cpu2,cpu3,cpu4,cpu5
 
 # .env (NUNCA COMMITE — fica no .gitignore)
-NVIDIA_API_KEY=nvapi-chave-secreta-real
+# Cole aqui o valor real apenas no ambiente privado, nunca em exemplos versionados.
 ```
 
 ### .gitignore (mínimo)
@@ -50,15 +50,15 @@ __pycache__/
 colab-sessions.json
 ```
 
-### Validação em CI
+### Validação local
 
-```yaml
-# .github/workflows/public-safety.yml
-- name: Checar segredos
-  run: |
-    python3 -m skill.colab-agent-fleet.scripts.fleet_public_safety \
-      --scan . --fail-on-secrets
+Este repositório não inclui workflow de CI configurado. Antes de publicar, rode o scanner localmente:
+
+```bash
+python3 skill/colab_agent_fleet/scripts/fleet_public_safety.py --scan .
 ```
+
+Se um pipeline de CI for adicionado no futuro, ele deve executar esse comando e falhar quando o scanner encontrar segredos reais.
 
 ### Narrativa pública
 

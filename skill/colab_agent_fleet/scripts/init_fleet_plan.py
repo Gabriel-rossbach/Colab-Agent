@@ -16,6 +16,96 @@ import subprocess
 from pathlib import Path
 from typing import Any, Optional
 
+
+class PlannerCancelled(Exception):
+    """Planejamento cancelado cooperativamente pelo orquestrador."""
+
+
+def _cancel_requested(cancel_path: str | Path | None) -> bool:
+    return cancel_path is not None and Path(cancel_path).exists()
+
+
+def _validar_nome_maquina(maquina: str) -> None:
+    if not re.fullmatch(r"cpu[1-6]", maquina):
+        raise ValueError(f"Nome de máquina inválido: {maquina!r}")
+
+
+def _validar_flags_gpu(flags: str) -> None:
+    if flags and not re.fullmatch(r"--gpu (t4|l4|a100)", flags):
+        raise ValueError("Flags de GPU permitidas: --gpu t4, --gpu l4 ou --gpu a100")
+
+
+async def _encerrar_processo(proc) -> None:
+    if proc.returncode is not None:
+        return
+    try:
+        proc.terminate()
+    except ProcessLookupError:
+        return
+    try:
+        await asyncio.wait_for(proc.wait(), timeout=5)
+    except (asyncio.TimeoutError, ProcessLookupError):
+        try:
+            proc.kill()
+        except ProcessLookupError:
+            return
+        await proc.wait()
+
+
+async def _comunicar_com_timeout(
+    proc,
+    timeout: int,
+    descricao: str,
+    cancel_path: str | Path | None = None,
+):
+    communication = asyncio.create_task(proc.communicate())
+    deadline = asyncio.get_running_loop().time() + timeout
+    try:
+        while True:
+            if _cancel_requested(cancel_path):
+                await _encerrar_processo(proc)
+                await communication
+                raise PlannerCancelled(f"Cancelamento solicitado em {descricao}")
+            remaining = deadline - asyncio.get_running_loop().time()
+            if remaining <= 0:
+                await _encerrar_processo(proc)
+                await communication
+                raise RuntimeError(f"Timeout de {timeout}s em {descricao}")
+            try:
+                return await asyncio.wait_for(
+                    asyncio.shield(communication),
+                    timeout=min(1, remaining),
+                )
+            except asyncio.TimeoutError:
+                pass
+    except asyncio.CancelledError:
+        await _encerrar_processo(proc)
+        await communication
+        raise
+
+
+async def _limpar_planner_remoto(maquina: str, callback_log=None) -> None:
+    """Melhor esforço: encerra o planejamento remoto sem desligar a sessão."""
+    if callback_log:
+        callback_log(f"🧹 {maquina}: encerrando planejamento remoto após cancelamento...")
+    proc = await asyncio.create_subprocess_shell(
+        f"colab ssh -s {maquina}",
+        stdin=asyncio.subprocess.PIPE,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.STDOUT,
+    )
+    proc.stdin.write(
+        b'pkill -f "ollama serve" 2>/dev/null || true\n'
+        b'pkill -f "ollama pull" 2>/dev/null || true\n'
+        b"exit\n"
+    )
+    proc.stdin.close()
+    try:
+        await asyncio.wait_for(proc.wait(), timeout=15)
+    except asyncio.TimeoutError:
+        await _encerrar_processo(proc)
+
+
 # Reuse validation logic
 sys.path.insert(0, str(Path(__file__).parent))
 from validate_fleet_plan import (
@@ -111,10 +201,15 @@ exit
 """
 
 
-def montar_mensagens(pedido: str) -> list[dict]:
+def montar_mensagens(pedido: str, browser_enabled: bool = True) -> list[dict]:
+    disponibilidade = (
+        "Browser HABILITADO: pode criar tarefas 'Use browser para ...' quando a ação exigir página real, login, formulário ou captura."
+        if browser_enabled
+        else "Browser DESABILITADO nesta run: não crie tarefas com browser/login/screenshot; use somente web_search."
+    )
     return [
         {"role": "system", "content": SKILL_PLANEJADOR},
-        {"role": "user", "content": f"Pedido:\n{pedido}"},
+        {"role": "user", "content": f"Pedido:\n{pedido}\n\n{disponibilidade}"},
     ]
 
 
@@ -173,45 +268,86 @@ def chamar_ollama(mensagens: list[dict], modelo: str = "gpt-oss:20b") -> str | N
     return None
 
 
-async def garantir_maquina_remota(maquina: str, callback_log=None, flags: str = "") -> None:
+async def garantir_maquina_remota(
+    maquina: str,
+    callback_log=None,
+    flags: str = "",
+    cancel_path: str | Path | None = None,
+) -> None:
     """Garante que a sessão Colab existe, criando se necessário."""
+    _validar_nome_maquina(maquina)
+    _validar_flags_gpu(flags)
+    if _cancel_requested(cancel_path):
+        raise PlannerCancelled("Cancelamento solicitado antes de preparar o planner")
     if callback_log:
         callback_log(f"🔍 Verificando sessão {maquina}...")
-    
+
     proc = await asyncio.create_subprocess_shell(
         "colab sessions",
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
     )
-    stdout, _ = await proc.communicate()
+    stdout, stderr = await _comunicar_com_timeout(
+        proc,
+        60,
+        "colab sessions",
+        cancel_path,
+    )
+    if proc.returncode != 0:
+        detalhe = (stderr or stdout).decode("utf-8", errors="replace").strip()
+        raise RuntimeError(f"Falha em colab sessions: {detalhe[-500:]}")
     saida = stdout.decode("utf-8", errors="replace")
-    
+
     if f"[{maquina.lower()}]" in saida.lower():
         if callback_log:
             callback_log(f"✅ {maquina} online.")
         return
 
+    if _cancel_requested(cancel_path):
+        raise PlannerCancelled("Cancelamento solicitado antes de criar o planner")
     if callback_log:
         callback_log(f"⚠️ {maquina} offline. Criando instância...")
-    
+
     cmd = f"colab new -s {maquina} {flags}".strip()
     proc_new = await asyncio.create_subprocess_shell(
         cmd,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.STDOUT,
     )
-    saida, _ = await proc_new.communicate()
-    for linha in saida.decode("utf-8", errors="replace").splitlines()[-5:]:
+    saida, _ = await _comunicar_com_timeout(
+        proc_new,
+        240,
+        f"criação de {maquina}",
+        cancel_path,
+    )
+    texto_saida = saida.decode("utf-8", errors="replace")
+    if proc_new.returncode != 0:
+        raise RuntimeError(f"Falha ao criar {maquina}: {texto_saida[-500:]}")
+    for linha in texto_saida.splitlines()[-5:]:
         if callback_log:
             callback_log(linha)
-    
+
     if callback_log:
         callback_log("⏳ Aguardando boot (15s)...")
-    await asyncio.sleep(15)
+    for _ in range(15):
+        if _cancel_requested(cancel_path):
+            raise PlannerCancelled("Cancelamento solicitado durante boot do planner")
+        await asyncio.sleep(1)
 
 
-async def chamar_ollama_remoto(maquina: str, mensagens: list[dict], modelo: str = "gpt-oss:20b", callback_log=None, flags_gpu: str = "") -> str | None:
+async def chamar_ollama_remoto(
+    maquina: str,
+    mensagens: list[dict],
+    modelo: str = "gpt-oss:20b",
+    callback_log=None,
+    flags_gpu: str = "",
+    cancel_path: str | Path | None = None,
+) -> str | None:
     """Chama Ollama em máquina Colab remota via SSH e retorna texto da resposta."""
+    _validar_nome_maquina(maquina)
+    _validar_flags_gpu(flags_gpu)
+    if _cancel_requested(cancel_path):
+        raise PlannerCancelled("Cancelamento solicitado antes da chamada remota")
     # Prepara requisição
     requisicao = {
         "model": modelo,
@@ -233,7 +369,12 @@ async def chamar_ollama_remoto(maquina: str, mensagens: list[dict], modelo: str 
     )
 
     # Garante que a máquina existe (cria se necessário)
-    await garantir_maquina_remota(maquina, flags=flags_gpu, callback_log=callback_log)
+    await garantir_maquina_remota(
+        maquina,
+        flags=flags_gpu,
+        callback_log=callback_log,
+        cancel_path=cancel_path,
+    )
 
     if callback_log:
         callback_log(f"🔗 Conectando em {maquina} para planejamento...")
@@ -251,7 +392,18 @@ async def chamar_ollama_remoto(maquina: str, mensagens: list[dict], modelo: str 
     escondendo = False
     plano_b64 = None
     while True:
-        linha = await proc.stdout.readline()
+        if _cancel_requested(cancel_path):
+            await _encerrar_processo(proc)
+            try:
+                await _limpar_planner_remoto(maquina, callback_log)
+            except Exception as exc:
+                if callback_log:
+                    callback_log(f"⚠️ {maquina}: falha na limpeza do planner: {exc}")
+            raise PlannerCancelled("Cancelamento solicitado durante o planejamento remoto")
+        try:
+            linha = await asyncio.wait_for(proc.stdout.readline(), timeout=1)
+        except asyncio.TimeoutError:
+            continue
         if not linha:
             break
         texto = linha.decode("utf-8", errors="replace").rstrip()
@@ -286,7 +438,16 @@ async def chamar_ollama_remoto(maquina: str, mensagens: list[dict], modelo: str 
     return None
 
 
-def gerar_plano(pedido: str, modelo: str, max_tentativas: int = 4, planner_machine: Optional[str] = None, callback_log=None, flags_gpu: str = "") -> dict | None:
+def gerar_plano(
+    pedido: str,
+    modelo: str,
+    max_tentativas: int = 4,
+    planner_machine: Optional[str] = None,
+    callback_log=None,
+    flags_gpu: str = "",
+    browser_enabled: bool = True,
+    cancel_path: str | Path | None = None,
+) -> dict | None:
     """
     Gera plano válido.
     
@@ -298,9 +459,12 @@ def gerar_plano(pedido: str, modelo: str, max_tentativas: int = 4, planner_machi
         callback_log: Função de log opcional (para uso remoto)
         flags_gpu: Flags para criação da máquina GPU (ex: "--gpu t4")
     """
-    mensagens = montar_mensagens(pedido)
+    mensagens = montar_mensagens(pedido, browser_enabled)
+    _validar_flags_gpu(flags_gpu)
 
     for tentativa in range(1, max_tentativas + 1):
+        if _cancel_requested(cancel_path):
+            raise PlannerCancelled("Cancelamento solicitado antes da próxima tentativa do planner")
         if callback_log:
             callback_log(f"🧠 Tentativa {tentativa}/{max_tentativas} com {modelo}...")
         else:
@@ -308,7 +472,16 @@ def gerar_plano(pedido: str, modelo: str, max_tentativas: int = 4, planner_machi
 
         if planner_machine:
             # Modo remoto: roda no cpu6 via SSH
-            resposta = asyncio.run(chamar_ollama_remoto(planner_machine, mensagens, modelo, callback_log, flags_gpu))
+            resposta = asyncio.run(
+                chamar_ollama_remoto(
+                    planner_machine,
+                    mensagens,
+                    modelo,
+                    callback_log,
+                    flags_gpu,
+                    cancel_path,
+                )
+            )
         else:
             # Modo local: chama Ollama em localhost
             resposta = chamar_ollama(mensagens, modelo)
@@ -337,7 +510,7 @@ def gerar_plano(pedido: str, modelo: str, max_tentativas: int = 4, planner_machi
             continue
 
         plan = {"request": pedido, "tasks": tarefas}
-        ok, erros = validar_plano_json(plan, pedido)
+        ok, erros = validar_plano_json(plan, pedido, browser_enabled)
 
         if ok:
             total = len(tarefas)

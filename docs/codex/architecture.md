@@ -46,15 +46,14 @@ tool({
 })
 ```
 
-## 4. Gateway por máquina (não compartilhado)
+## 4. Gateway por máquina, somente em loopback
 
-**Decisão**: cada máquina de CPU roda seu próprio gateway (`--auth none --bind loopback`).
+**Decisão**: com browser habilitado, cada máquina de CPU roda seu próprio gateway em loopback; sem browser, o agente usa `openclaw agent exec` diretamente.
 
 **Justificativa**:
 - Ferramentas de plugin exigem gateway
-- Gateway compartilhado = ponto único de falha + complexidade de auth
-- Bind em loopback = sem exposição externa
-- Modo dev = sem config persistente necessária
+- Gateway compartilhado seria ponto único de falha
+- Bind em loopback não expõe o gateway fora da sessão Colab
 
 ## 5. Plano da fleet em JSON (não YAML/TOML)
 
@@ -68,12 +67,9 @@ tool({
 
 ## 6. Pipeline escalonado (60s entre máquinas)
 
-**Decisão**: lançar as máquinas sequencialmente com 60s de intervalo, não totalmente em paralelo.
+**Decisão**: o executor CLI lança as máquinas com 60s de intervalo; o worker web inicia os grupos das máquinas após a confirmação.
 
-**Justificativa**:
-- Erros de "offline maintenance" do SQLite quando 5 gateways iniciam simultaneamente
-- Escalonamento de 60s = ~5 min no total vs 2 min em paralelo, mas 99% de sucesso vs 40%
-- Aceitável para cargas de pesquisa (não é tempo real)
+**Justificativa**: o intervalo reduz contenção de inicialização observada no modo CLI e não é tempo real.
 
 ## 7. Confirmação com humano no loop
 
@@ -104,10 +100,10 @@ tool({
 
 ## 10. Resumo em markdown com redação (redaction)
 
-**Decisão**: saída final = resumo em markdown + JSONL bruto + JSON dos gates, tudo redactado.
+**Decisão**: saída final = resumo em markdown + resultados JSON sanitizados + JSON dos gates.
 
 **Justificativa**:
 - Relatório legível por humanos
 - Legível por máquina para processamento downstream
-- Seguro para compartilhar publicamente (sem segredos, sem URLs privadas)
-- `fleet_public_safety.py` garante consistência
+- Redação em camadas reduz o risco de exposição acidental
+- `fleet_public_safety.py` padroniza a redação, mas a revisão humana continua obrigatória antes de qualquer publicação

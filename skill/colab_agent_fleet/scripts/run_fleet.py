@@ -10,15 +10,109 @@ Executa um fleet plan validado nas máquinas Colab.
 import argparse
 import asyncio
 import base64
+import inspect
 import json
 import math
 import os
-import shlex
+import re
 import sys
 import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any
+
+
+class FleetCancelled(Exception):
+    """Execução cancelada cooperativamente pelo orquestrador."""
+
+
+def _cancel_requested(cancel_path: str | Path | None) -> bool:
+    return cancel_path is not None and Path(cancel_path).exists()
+
+
+def _validar_nome_maquina(maquina: str) -> None:
+    if not re.fullmatch(r"cpu[1-6]", maquina):
+        raise ValueError(f"Nome de máquina inválido: {maquina!r}")
+
+
+async def _emit_event(event_callback, **event) -> None:
+    if event_callback is None:
+        return
+    resultado = event_callback(event)
+    if inspect.isawaitable(resultado):
+        await resultado
+
+
+async def _encerrar_processo(proc) -> None:
+    if proc.returncode is not None:
+        return
+    try:
+        proc.terminate()
+    except ProcessLookupError:
+        return
+    try:
+        await asyncio.wait_for(proc.wait(), timeout=5)
+    except (asyncio.TimeoutError, ProcessLookupError):
+        try:
+            proc.kill()
+        except ProcessLookupError:
+            return
+        await proc.wait()
+
+
+async def _comunicar_com_timeout(
+    proc,
+    timeout: int,
+    descricao: str,
+    cancel_path: str | Path | None = None,
+):
+    communication = asyncio.create_task(proc.communicate())
+    deadline = asyncio.get_running_loop().time() + timeout
+    try:
+        while True:
+            if _cancel_requested(cancel_path):
+                await _encerrar_processo(proc)
+                await communication
+                raise FleetCancelled(f"Cancelamento solicitado em {descricao}")
+            remaining = deadline - asyncio.get_running_loop().time()
+            if remaining <= 0:
+                await _encerrar_processo(proc)
+                await communication
+                raise RuntimeError(f"Timeout de {timeout}s em {descricao}")
+            try:
+                return await asyncio.wait_for(
+                    asyncio.shield(communication),
+                    timeout=min(1, remaining),
+                )
+            except asyncio.TimeoutError:
+                pass
+    except asyncio.CancelledError:
+        await _encerrar_processo(proc)
+        await communication
+        raise
+
+
+async def _limpar_processos_remotos(maquina: str, callback_log) -> None:
+    """Melhor esforço: encerra agente/gateway sem desligar a sessão Colab."""
+    callback_log(f"🧹 {maquina}: limpando processos remotos após cancelamento...")
+    proc = await asyncio.create_subprocess_shell(
+        f"colab ssh -s {maquina}",
+        stdin=asyncio.subprocess.PIPE,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.STDOUT,
+    )
+    proc.stdin.write(
+        b'pkill -f "openclaw agent" 2>/dev/null || true\n'
+        b'pkill -f "openclaw[- ]gateway" 2>/dev/null || true\n'
+        b"exit\n"
+    )
+    proc.stdin.close()
+    try:
+        await asyncio.wait_for(proc.wait(), timeout=15)
+    except asyncio.TimeoutError:
+        await _encerrar_processo(proc)
+        callback_log(f"⚠️ {maquina}: limpeza remota excedeu o tempo limite.")
+
 
 # ─── CONFIG ────────────────────────────────────────────────────────
 def build_script_agente(use_browser: bool) -> str:
@@ -192,14 +286,22 @@ openclaw gateway --port 3456 --token "$OPENCLAW_GATEWAY_TOKEN" > /tmp/gateway.lo
 GATEWAY_PID=$!
 # Aguarda gateway ficar TOTALMENTE pronto (post-ready = todos os sidecars e plugins prontos)
 # Num gateway novo leva ~60-75s até "post-ready.startup-maintenance" - se o agent rodar antes, o browser tool não aparece
-echo "[*] Aguardando gateway ficar totally pronto..."
+echo "[*] Aguardando gateway ficar totalmente pronto..."
+GATEWAY_READY=false
 for i in $(seq 1 20); do
     sleep 5
     if strings /tmp/gateway.log 2>/dev/null | grep -q "post-ready.startup-maintenance"; then
         echo "[*] Gateway totalmente pronto após $((i*5))s (post-ready)"
+        GATEWAY_READY=true
         break
     fi
 done
+if [ "$GATEWAY_READY" != "true" ]; then
+    echo "[ERRO] Gateway não ficou pronto dentro do tempo limite."
+    strings /tmp/gateway.log 2>/dev/null | tail -20 || true
+    pkill -9 -f "openclaw[- ]gateway" 2>/dev/null || true
+    exit 70
+fi
 # Verifica porta e plugins
 if ss -tln 2>/dev/null | grep -q ":3456 "; then
     echo "[*] Gateway OK (porta 3456 ativa)."
@@ -246,7 +348,7 @@ sleep 2
 # 4. Config completa (API key via env var para não ser sobrescrita pelo paste-api-key)
 echo "[*] Escrevendo config..."
 mkdir -p /root/.openclaw
-export NVIDIA_API_KEY='{{CHAVE_NVIDIA}}'
+export NVIDIA_API_KEY="$(echo '__NVIDIA_KEY_B64__' | base64 -d)"
 cat > /root/.openclaw/openclaw.json << 'JSONEOF'
 {config_json}
 JSONEOF
@@ -271,6 +373,8 @@ PROMPT_FINAL="$(cat /tmp/prompt_final.txt)"
 # --code-mode direct = tool surface normal (não Code Mode)
 # tools.allow=["group:web"] já está no openclaw.json
 {browser_gateway_start}
+# Mesmo com falha do agente, registra o código e executa a limpeza do gateway.
+set +e
 if [ "{use_browser_str}" = "true" ]; then
     # Browser tool requer gateway - roda agent via gateway
     export OPENCLAW_GATEWAY_TOKEN="opencrawl-fleet-token"
@@ -290,8 +394,11 @@ else
         --timeout 1800
 fi
 RC=$?
+set -e
 echo "AGENTE_EXIT=$RC"
-[ "$RC" -eq 0 ] && echo "MISSAO_OK"
+if [ "$RC" -eq 0 ]; then
+    echo "MISSAO_OK"
+fi
 
 # Para gateway no final
 pkill -9 -f "openclaw[- ]gateway" 2>/dev/null || true
@@ -303,33 +410,62 @@ SCRIPT_AGENTE_NO_BROWSER = build_script_agente(False)
 SCRIPT_AGENTE_WITH_BROWSER = build_script_agente(True)
 
 PROMOTION_GATES_DEFAULTS = {
-    "min_unique_sources": 3,
-    "max_dup_ratio": 0.15,
-    "min_chars_per_result": 200,
+    # Somente gates realmente calculados ficam na configuração pública.
+    "min_success_ratio": 0.7,
 }
 
 
 def gerar_comando_bash(prompt: str, chave_nvidia: str, use_browser: bool = False) -> str:
     prompt_b64 = base64.b64encode(prompt.encode("utf-8")).decode("ascii")
     script = SCRIPT_AGENTE_WITH_BROWSER if use_browser else SCRIPT_AGENTE_NO_BROWSER
-    return script.replace("__PROMPT_B64__", prompt_b64).replace("{CHAVE_NVIDIA}", chave_nvidia)
+    chave_b64 = base64.b64encode(chave_nvidia.encode("utf-8")).decode("ascii")
+    return script.replace("__PROMPT_B64__", prompt_b64).replace("__NVIDIA_KEY_B64__", chave_b64)
 
 
-async def garantir_maquina(maquina: str, callback_log, flags: str = "") -> None:
+async def garantir_maquina(
+    maquina: str,
+    callback_log,
+    flags: str = "",
+    event_callback=None,
+    cancel_path: str | Path | None = None,
+) -> None:
     """Garante que a sessão Colab existe, criando se necessário."""
+    _validar_nome_maquina(maquina)
+    if flags and not re.fullmatch(r"--gpu (t4|l4|a100)", flags):
+        raise ValueError("Flags de GPU não permitidas")
+    if _cancel_requested(cancel_path):
+        raise FleetCancelled(f"Cancelamento solicitado antes de preparar {maquina}")
+
+    await _emit_event(
+        event_callback,
+        type="machine.state",
+        machine=maquina,
+        state="PROVISIONING",
+        message="Verificando sessão Colab",
+    )
     callback_log(f"🔍 Verificando sessão {maquina}...")
     proc = await asyncio.create_subprocess_shell(
         "colab sessions",
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
     )
-    stdout, _ = await proc.communicate()
+    stdout, stderr = await _comunicar_com_timeout(
+        proc,
+        60,
+        "colab sessions",
+        cancel_path,
+    )
+    if proc.returncode != 0:
+        detalhe = (stderr or stdout).decode("utf-8", errors="replace").strip()
+        raise RuntimeError(f"Falha em colab sessions: {detalhe[-500:]}")
     saida = stdout.decode("utf-8", errors="replace")
-    
+
     if f"[{maquina.lower()}]" in saida.lower():
         callback_log(f"✅ {maquina} online.")
         return
 
+    if _cancel_requested(cancel_path):
+        raise FleetCancelled(f"Cancelamento solicitado antes de criar {maquina}")
     callback_log(f"⚠️ {maquina} offline. Criando instância...")
     cmd = f"colab new -s {maquina} {flags}".strip()
     proc_new = await asyncio.create_subprocess_shell(
@@ -337,33 +473,88 @@ async def garantir_maquina(maquina: str, callback_log, flags: str = "") -> None:
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.STDOUT,
     )
-    saida, _ = await proc_new.communicate()
-    for linha in saida.decode("utf-8", errors="replace").splitlines()[-5:]:
+    saida, _ = await _comunicar_com_timeout(
+        proc_new,
+        240,
+        f"criação de {maquina}",
+        cancel_path,
+    )
+    texto_saida = saida.decode("utf-8", errors="replace")
+    for linha in texto_saida.splitlines()[-5:]:
         callback_log(linha)
+    if proc_new.returncode != 0:
+        raise RuntimeError(f"Falha ao criar {maquina}: {texto_saida[-500:]}")
+
     callback_log("⏳ Aguardando boot (15s)...")
-    await asyncio.sleep(15)
+    for _ in range(15):
+        if _cancel_requested(cancel_path):
+            raise FleetCancelled(f"Cancelamento solicitado durante boot de {maquina}")
+        await asyncio.sleep(1)
 
 
-async def rodar_maquina(maquina: str, tarefas: list[dict], chave_nvidia: str, callback_log, use_browser: bool = False) -> list[dict]:
-    """Roda todas as tarefas de uma máquina sequencialmente. Retorna lista de resultados."""
-    # Garante que a máquina existe
-    await garantir_maquina(maquina, callback_log)
-    
+async def rodar_maquina(
+    maquina: str,
+    tarefas: list[dict],
+    chave_nvidia: str,
+    callback_log,
+    use_browser: bool = False,
+    event_callback=None,
+    cancel_path: str | Path | None = None,
+    max_tentativas: int | None = None,
+) -> list[dict]:
+    """Roda tarefas sequencialmente e emite estados estruturados opcionais."""
+    _validar_nome_maquina(maquina)
+    if max_tentativas is None:
+        # Browser pode executar ações irreversíveis; não repetir por padrão.
+        max_tentativas = 1 if use_browser else 2
+    if not 1 <= max_tentativas <= 3:
+        raise ValueError("max_tentativas deve estar entre 1 e 3")
+    if _cancel_requested(cancel_path):
+        raise FleetCancelled(f"Cancelamento solicitado antes de iniciar {maquina}")
+
+    await garantir_maquina(
+        maquina,
+        callback_log,
+        event_callback=event_callback,
+        cancel_path=cancel_path,
+    )
     resultados = []
+    houve_falha = False
 
     for tarefa in tarefas:
         n = tarefa["task"]
         prompt = tarefa["prompt"]
-        callback_log(f"  ▶ {maquina} tarefa{n}: {prompt[:80]}...")
+        if _cancel_requested(cancel_path):
+            raise FleetCancelled(f"Cancelamento solicitado antes de {maquina} tarefa{n}")
 
+        callback_log(f"  ▶ {maquina} tarefa{n} iniciada.")
         script = gerar_comando_bash(prompt, chave_nvidia, use_browser)
-        max_tentativas = 2  # retry automático (ex: browser timeout)
-
         resultado = None
+
         for tentativa in range(1, max_tentativas + 1):
+            proc = None
+            estado = "RUNNING" if tentativa == 1 else "RETRYING"
+            await _emit_event(
+                event_callback,
+                type="machine.state",
+                machine=maquina,
+                state=estado,
+                task=n,
+            )
+            await _emit_event(
+                event_callback,
+                type="task.state",
+                machine=maquina,
+                task=n,
+                attempt=tentativa,
+                state=estado,
+            )
             if tentativa > 1:
                 callback_log(f"     🔁 Nova tentativa {tentativa}/{max_tentativas} da tarefa{n}...")
+
             try:
+                if _cancel_requested(cancel_path):
+                    raise FleetCancelled(f"Cancelamento solicitado em {maquina} tarefa{n}")
                 proc = await asyncio.create_subprocess_shell(
                     f"colab ssh -s {maquina}",
                     stdin=asyncio.subprocess.PIPE,
@@ -375,34 +566,69 @@ async def rodar_maquina(maquina: str, tarefas: list[dict], chave_nvidia: str, ca
 
                 saida_lines = []
                 while True:
-                    linha = await proc.stdout.readline()
+                    if _cancel_requested(cancel_path):
+                        raise FleetCancelled(f"Cancelamento solicitado em {maquina} tarefa{n}")
+                    try:
+                        linha = await asyncio.wait_for(proc.stdout.readline(), timeout=1)
+                    except asyncio.TimeoutError:
+                        continue
                     if not linha:
                         break
                     texto = linha.decode("utf-8", errors="replace").rstrip()
                     saida_lines.append(texto)
-                    # Streaming: loga cada linha em tempo real no painel da máquina
                     callback_log(f"     {texto}")
 
                 await proc.wait()
                 saida = "\n".join(saida_lines)
-
-                sucesso = "MISSAO_OK" in saida
+                sucesso = proc.returncode == 0 and "MISSAO_OK" in saida
                 callback_log(f"     {'✅' if sucesso else '❌'} {maquina} tarefa{n} {'ok' if sucesso else 'falhou'}")
 
-                # Extrai resultado (simplificado - em produção parsearia JSON do agente)
                 resultado = {
                     "maquina": maquina,
                     "task": n,
                     "prompt": prompt,
                     "sucesso": sucesso,
-                    "saida_bruta": saida[-2000:],  # últimos 2000 chars
+                    "saida_bruta": saida[-2000:],
+                    "saida_completa": saida,
                     "timestamp": time.time(),
                     "tentativas": tentativa,
                 }
                 if sucesso:
                     break
 
+            except FleetCancelled:
+                await _emit_event(
+                    event_callback,
+                    type="machine.state",
+                    machine=maquina,
+                    state="CANCELLING",
+                    task=n,
+                )
+                if proc is not None:
+                    await _encerrar_processo(proc)
+                try:
+                    await _limpar_processos_remotos(maquina, callback_log)
+                except Exception as exc:
+                    callback_log(f"⚠️ {maquina}: falha na limpeza remota: {exc}")
+                await _emit_event(
+                    event_callback,
+                    type="task.state",
+                    machine=maquina,
+                    task=n,
+                    attempt=tentativa,
+                    state="CANCELLED",
+                )
+                await _emit_event(
+                    event_callback,
+                    type="machine.state",
+                    machine=maquina,
+                    state="CANCELLED",
+                    task=n,
+                )
+                raise
             except Exception as e:
+                if proc is not None:
+                    await _encerrar_processo(proc)
                 callback_log(f"     ❌ {maquina} tarefa{n} erro: {e}")
                 resultado = {
                     "maquina": maquina,
@@ -416,7 +642,24 @@ async def rodar_maquina(maquina: str, tarefas: list[dict], chave_nvidia: str, ca
 
         if resultado is not None:
             resultados.append(resultado)
+            sucesso = bool(resultado.get("sucesso"))
+            houve_falha = houve_falha or not sucesso
+            await _emit_event(
+                event_callback,
+                type="task.state",
+                machine=maquina,
+                task=n,
+                attempt=resultado.get("tentativas", max_tentativas),
+                state="COMPLETED" if sucesso else "FAILED",
+                message=resultado.get("erro"),
+            )
 
+    await _emit_event(
+        event_callback,
+        type="machine.state",
+        machine=maquina,
+        state="FAILED" if houve_falha else "COMPLETED",
+    )
     return resultados
 
 
@@ -455,7 +698,8 @@ def render_summary(resultados: list[dict], gates_result: dict, request: str) -> 
         f"## Gates: {'✅ PASS' if gates_result['gate_pass'] else '❌ FAIL'}",
         f"- Total tasks: {gates_result['total_tasks']}",
         f"- Successful: {gates_result['successful']}",
-        f"- Success ratio: {gates_result['details']['actual_ratio']:.1%} (min 70%)",
+        f"- Success ratio: {gates_result['details']['actual_ratio']:.1%} "
+        f"(min {gates_result['details']['min_success_ratio']:.0%})",
         f"",
         f"## Per-Machine Results",
     ]
@@ -470,7 +714,7 @@ def render_summary(resultados: list[dict], gates_result: dict, request: str) -> 
         lines.append(f"### {maquina}: {ok}/{len(tasks)} ok")
         for t in tasks:
             status = "✅" if t.get("sucesso") else "❌"
-            lines.append(f"  - {status} tarefa{t['task']}: {t['prompt'][:60]}...")
+            lines.append(f"  - {status} tarefa{t.get('task', '?')}: {t.get('prompt', '')[:60]}...")
 
     return "\n".join(lines)
 
@@ -483,7 +727,7 @@ async def main_async(args):
     # Valida
     sys.path.insert(0, str(Path(__file__).parent))
     from validate_fleet_plan import validar_plano_json
-    ok, erros = validar_plano_json(plan, plan.get("request", ""))
+    ok, erros = validar_plano_json(plan, plan.get("request", ""), args.browser)
     if not ok:
         sys.exit("❌ Plan inválido:\n" + "\n".join(f"  - {e}" for e in erros))
 
@@ -527,7 +771,9 @@ async def main_async(args):
             tarefas = tarefas_por_maquina[maquina]
             futures[maquina] = loop.run_in_executor(
                 executor,
-                lambda m=maquina, t=tarefas: asyncio.run(rodar_maquina(m, t, chave, print)),
+                lambda m=maquina, t=tarefas: asyncio.run(
+                    rodar_maquina(m, t, chave, print, use_browser=args.browser)
+                ),
             )
 
         for maquina, fut in futures.items():
@@ -536,7 +782,14 @@ async def main_async(args):
                 all_results.extend(resultados)
             except Exception as e:
                 print(f"❌ {maquina} falhou: {e}")
-                all_results.append({"maquina": maquina, "erro": str(e), "timestamp": time.time()})
+                all_results.append({
+                    "maquina": maquina,
+                    "task": 0,
+                    "prompt": "",
+                    "sucesso": False,
+                    "erro": str(e),
+                    "timestamp": time.time(),
+                })
 
     # Gates + Summary
     gates = {**PROMOTION_GATES_DEFAULTS, **(args.gates or {})}
@@ -575,6 +828,7 @@ def main():
     parser.add_argument("--plan", required=True, help="fleet-plan.json validado")
     parser.add_argument("--out", required=True, help="Base path para outputs (ex: /tmp/run)")
     parser.add_argument("--auto-confirm", action="store_true", help="Pula confirmação humana")
+    parser.add_argument("--browser", action="store_true", help="Habilita browser tool nos executores")
     parser.add_argument("--gates", type=json.loads, default="{}", help="JSON com gates customizados")
     args = parser.parse_args()
 

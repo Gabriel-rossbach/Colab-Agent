@@ -32,6 +32,7 @@ dependencies = [
     "duckduckgo-search>=6.0",
     "python-dotenv>=1.0",
     "pydantic>=2.0",
+    "PyYAML>=6.0",
 ]
 
 [project.optional-dependencies]
@@ -46,13 +47,12 @@ planner = [
     "ollama>=0.3",
 ]
 
-[project.entry-points]
-"colab-fleet-plan" = "colab_agent_fleet.scripts.init_fleet_plan:main"
-"colab-fleet-run" = "colab_agent_fleet.scripts.run_fleet:main"
-"colab-fleet-validate" = "colab_agent_fleet.scripts.validate_fleet_plan:main"
-"colab-fleet-summary" = "colab_agent_fleet.scripts.render_fleet_summary:main"
-"colab-fleet-context" = "colab_agent_fleet.scripts.capture_fleet_context:main"
-"colab-fleet-dashboard" = "colab_agent_fleet.dashboard:main"
+[project.scripts]
+colab-fleet-plan = "colab_agent_fleet.scripts.init_fleet_plan:main"
+colab-fleet-run = "colab_agent_fleet.scripts.run_fleet:main"
+colab-fleet-validate = "colab_agent_fleet.scripts.validate_fleet_plan:main"
+colab-fleet-summary = "colab_agent_fleet.scripts.render_fleet_summary:main"
+colab-fleet-context = "colab_agent_fleet.scripts.capture_fleet_context:main"
 
 [tool.setuptools.packages.find]
 where = ["skill"]

@@ -6,15 +6,17 @@ O **Colab Agent Fleet** orquestra uma **lane de planejamento (GPU)** + **lane de
 
 1. **Planejador** (cpu6, GPU): Ollama local (gpt-oss:20b) recebe linguagem natural → gera plano da fleet validado
 2. **Fleet** (cpu1–5, CPU): cada uma roda OpenClaw com plugin web_search → pesquisas web em paralelo
-3. **Gates** → critérios de promoção (taxa de sucesso, fontes únicas, dedup, profundidade do conteúdo)
-4. **Dashboard** → TUI com humano no loop para aprovar o plano e monitorar
+3. **Gates** → Promotion gate implementado: taxa mínima de sucesso das tarefas
+4. **Dashboards** → TUI e painel Web com humano no loop para aprovar o plano e monitorar
+
+O painel Web é servido por Flutter Web + proxy same-origin; o backend Spring Boot supervisiona `fleet_worker.py`, que emite JSON Lines e grava artefatos privados. A implantação Oracle, os limites de persistência e o fluxo de autenticação estão em [web-deployment.md](web-deployment.md).
 
 ## Início rápido para o Codex
 
 ```bash
 # 1. Instalar a skill localmente
 mkdir -p "$CODEX_HOME/skills"
-rsync -a skill/colab-agent-fleet/ "$CODEX_HOME/skills/colab-agent-fleet/"
+rsync -a skill/colab_agent_fleet/ "$CODEX_HOME/skills/colab-agent-fleet/"
 
 # 2. Configurar o ambiente
 cp .env.example .env
@@ -37,16 +39,16 @@ python3 -m colab_agent_fleet.scripts.run_fleet.py \
 
 ```bash
 # 1. Checagem de sintaxe de todos os scripts
-python3 -m py_compile skill/colab-agent-fleet/scripts/*.py
+python3 -m py_compile skill/colab_agent_fleet/scripts/*.py
 
 # 2. Testes unitários
 python3 -m pytest tests/ -q
 
 # 3. Scan de segurança pública
-python3 skill/colab-agent-fleet/scripts/fleet_public_safety.py --scan .
+python3 skill/colab_agent_fleet/scripts/fleet_public_safety.py --scan .
 
 # 4. Validar plano de exemplo
-python3 skill/colab-agent-fleet/scripts/validate_fleet_plan.py \
+python3 skill/colab_agent_fleet/scripts/validate_fleet_plan.py \
   --plan tests/fixtures/valid_plan.json \
   --request "pesquise 5 carros mais rápidos e 5 motos mais rápidas"
 ```
@@ -55,15 +57,19 @@ python3 skill/colab-agent-fleet/scripts/validate_fleet_plan.py \
 
 | Arquivo | Finalidade |
 |---------|------------|
-| `skill/colab-agent-fleet/SKILL.md` | Manifesto da skill, uso, regras, lista de scripts |
-| `skill/colab-agent-fleet/scripts/init_fleet_plan.py` | Planejador: LN → JSON de plano validado |
-| `skill/colab-agent-fleet/scripts/run_fleet.py` | Executor: roda o plano na fleet Colab |
-| `skill/colab-agent-fleet/scripts/validate_fleet_plan.py` | Validador: verificador de plano standalone |
-| `skill/colab-agent-fleet/scripts/render_fleet_summary.py` | Relatórios: JSONL + gates → markdown |
-| `skill/colab-agent-fleet/references/plan-spec.md` | Schema JSON do plano e regras de distribuição |
-| `skill/colab-agent-fleet/references/fleet-architecture.md` | Arquitetura, modos de falha, fluxo de dados |
-| `skill/colab-agent-fleet/references/openclaw-integration.md` | Plugin OpenClaw, gateway, config do agente |
-| `skill/colab-agent-fleet/references/promotion-gates.md` | Lógica dos gates, customização, integração com CI |
+| `skill/colab_agent_fleet/SKILL.md` | Manifesto da skill, uso, regras, lista de scripts |
+| `fleet_worker.py` | Worker JSON Lines usado pelo backend Web |
+| `backend/` | API Spring Boot, autenticação e supervisão de subprocessos |
+| `frontend/` | Painel Flutter Web com polling e seis máquinas |
+| `deploy/` | Docker Compose, Caddy e Nginx para Oracle |
+| `skill/colab_agent_fleet/scripts/init_fleet_plan.py` | Planejador: LN → JSON de plano validado |
+| `skill/colab_agent_fleet/scripts/run_fleet.py` | Executor: roda o plano na fleet Colab |
+| `skill/colab_agent_fleet/scripts/validate_fleet_plan.py` | Validador: verificador de plano standalone |
+| `skill/colab_agent_fleet/scripts/render_fleet_summary.py` | Relatórios: JSONL + gates → markdown |
+| `skill/colab_agent_fleet/references/plan-spec.md` | Schema JSON do plano e regras de distribuição |
+| `skill/colab_agent_fleet/references/fleet-architecture.md` | Arquitetura, modos de falha, fluxo de dados |
+| `skill/colab_agent_fleet/references/openclaw-integration.md` | Plugin OpenClaw, gateway, config do agente |
+| `skill/colab_agent_fleet/references/promotion-gates.md` | Gate de sucesso, customização e limites |
 
 ## Tarefas comuns para o Codex
 

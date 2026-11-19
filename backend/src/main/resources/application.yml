@@ -1,0 +1,10 @@
+spring:
+  application:
+    name: fleet-backend
+
+fleet:
+  repo-root: ${FLEET_REPO_ROOT:..}
+  python-bin: ${FLEET_PYTHON_BIN:python3}
+  runs-dir: ${FLEET_RUNS_DIR:/tmp/colab-fleet-runs}
+  api-token: ${FLEET_API_TOKEN:}
+  cors-allowed-origins: ${FLEET_CORS_ALLOWED_ORIGINS:http://localhost:5173,http://localhost:8080}
